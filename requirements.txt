@@ -1,0 +1,14 @@
+# Framework & Env
+fastapi[standard]
+pydantic-settings
+
+# Database & Migration
+asyncpg
+alembic
+sqlalchemy>=2.0.0
+
+# Authentication & Security
+pwdlib[bcrypt]
+pyjwt
+python-jose[cryptography]
+

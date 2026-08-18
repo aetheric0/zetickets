@@ -1,0 +1,15 @@
+[project]
+name = "zetickets"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pwdlib[bcrypt]>=0.3.1",
+    "python-jose[cryptography]>=3.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "types-passlib>=1.7.7.20260211",
+]
