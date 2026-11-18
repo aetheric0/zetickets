@@ -10,13 +10,18 @@ The agent may make reversible, conventional engineering decisions within the app
 
 **Proceed autonomously**
 - Targeted code inspection.
+- Break authorized phases into sub-phases with acceptance criteria.
 - Implementation within the approved phase.
 - Routine refactoring required for correctness.
 - Unit and integration test creation.
 - Running tests and diagnosing failures.
 - Formatting, lint and type corrections.
 - Updating documentation and post-mortems.
+- Maintaining a decision log for material design choices.
 - Reviewing diffs and preparing verified commits.
+- Producing one consolidated milestone report and creating verified checkpoints.
+
+Do not interrupt the user for ordinary implementation choices, predictable refactoring, formatting/lint corrections, routine test failures that can be diagnosed safely, or non-destructive changes inside the authorized scope. Finish all safe independent work when one item is blocked.
 
 **Pause for user approval**
 - Destructive or irreversible data operations.

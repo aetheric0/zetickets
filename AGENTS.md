@@ -14,15 +14,23 @@ Build Zetickets as a reliable, secure, maintainable ticketing platform and a cre
 
 Read the relevant instructions and inspect the current repository state before making changes. Do not assume that prior reports describe the current checkout.
 
+## Architecture and conventions
+
+- Preserve the existing FastAPI API, asynchronous SQLAlchemy 2.x ORM, PostgreSQL, Pydantic and Alembic architecture.
+- Keep request handling at the API boundary and put reusable business transitions in services. Database writes that update an order and inventory must share one transaction.
+- Treat PostgreSQL as the production transaction and migration target. SQLite or mocks can support unit tests but do not establish PostgreSQL locking or enum compatibility.
+- Keep persisted unknown historical facts nullable until reconciled from authoritative evidence. Never infer purchase quantity, price, currency or expiry.
+- Do not add routes, providers, schedulers or infrastructure unless the active phase explicitly requires them.
+
 ## Engineering roadmap
 
 Execute these phases in order:
 
-1. **Canonical data model and schemas** — ORM relationships, foreign keys, Pydantic contracts, enums, constraints and controlled schema evolution.
-2. **Transactional business logic** — reservation lifecycle, inventory, expiry, order state transitions, concurrency, cancellation and idempotency.
-3. **Security and payments** — authentication, authorization, payment verification, webhook authenticity, replay protection and reconciliation.
-4. **API integration and automated testing** — router wiring, dependency injection, endpoint contracts, integration tests, PostgreSQL compatibility and CI.
-5. **Deployment and portfolio readiness** — reproducible dependencies, containers, controlled migrations, configuration/secrets, observability, documentation and deployment.
+1. **Canonical data model and schemas** — ORM relationships, foreign keys, Pydantic contracts, enums, constraints and controlled schema evolution. Exit only when models/schemas agree, enum/migration definitions are reconciled, historical unknowns remain unknown, compatibility tests pass, and the post-mortem/checkpoint exist. Report PostgreSQL migration compatibility separately from code inspection.
+2. **Transactional business logic** — reservation lifecycle, inventory, expiry, order state transitions, concurrency, cancellation and idempotency. Exit only when transitions are explicit, inventory cannot oversell under supported concurrency, expiry/release are deterministic and retry-safe, duplicates cannot double-apply, completion requires trusted payment evidence, tests pass, PostgreSQL-specific checks pass or are explicitly blocked, and the post-mortem/checkpoint exist.
+3. **Security and payments** — authentication, authorization, payment verification, webhook authenticity, replay protection and reconciliation. Exit only when protected operations enforce ownership and authorization, payments use trusted verification, webhooks are authenticated and replay-safe, secrets stay external, and security/provider tests pass in an appropriate sandbox.
+4. **API integration and automated testing** — router wiring, dependency injection, endpoint contracts, integration tests, PostgreSQL compatibility and CI. Exit only when intended routes are registered/documented, contracts match services, tests are reproducible, CI runs agreed checks and PostgreSQL-specific tests run against PostgreSQL.
+5. **Deployment and portfolio readiness** — reproducible dependencies, containers, controlled migrations, configuration/secrets, observability, documentation and deployment. Exit only when fresh-clone setup and deployment are reproducible, migration release is controlled, secrets are excluded, operational/recovery guidance exists and portfolio claims are evidenced.
 
 Do not skip phases or begin Phase 3 until Phase 2 has passed its exit review. Do not mark a phase complete while mandatory criteria remain unmet.
 
