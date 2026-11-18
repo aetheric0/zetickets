@@ -44,7 +44,7 @@ class Event(Base, TimestampMixin):
         DateTime(timezone=True),
         nullable = False
     )
-    end_time: Mapped[str] = mapped_column(
+    end_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False
     )
@@ -61,6 +61,8 @@ class Event(Base, TimestampMixin):
     ticket_types: Mapped[list[TicketType]] = relationship(
         "TicketType", 
         back_populates="event",
-        cascade="all, delete-orphan"
+        passive_deletes=True
     )
-    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # The initial schema did not record publication state. Keep it unknown for
+    # existing rows; new Event instances default to unpublished.
+    is_published: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)

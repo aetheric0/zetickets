@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 class TicketStatus(str, PyEnum):
+    RESERVED = "RESERVED"
     ISSUED = "ISSUED"
     USED = "USED"
     CANCELLED = "CANCELLED"
@@ -44,16 +45,19 @@ class TicketType(Base, TimestampMixin):
         Numeric(10, 2),
         nullable=False
     ) # e.g. "VIP", "Early bird"
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     quantity_available: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         comment="Total max tickets allocated for this tier"
     )
-    quantity_reserved: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False, comment="Active pending reservation holds")
-    quantity_sold: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False, comment="Finalized paid ticket sales")
+    # NULL identifies legacy inventory whose counters cannot be reconstructed
+    # safely. New ticket types initialize both counters explicitly.
+    quantity_reserved: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Active pending reservation holds")
+    quantity_sold: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Finalized paid ticket sales")
 
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Relationships
     event: Mapped[Event] = relationship(
         "Event",
@@ -63,12 +67,15 @@ class TicketType(Base, TimestampMixin):
         "Ticket",
         back_populates="ticket_type"
     )
+    orders: Mapped[list[Order]] = relationship("Order", back_populates="ticket_type")
 
     @hybrid_property
-    def remaining_capacity(self) -> int:
+    def remaining_capacity(self) -> int | None:
         """
         Dynamic Python evaluation for remaining available capacity.
         """
+        if self.quantity_sold is None or self.quantity_reserved is None:
+            return None
         return self.quantity_available - (self.quantity_sold + self.quantity_reserved)
 
     @remaining_capacity.inplace.expression
@@ -107,7 +114,7 @@ class Ticket(Base, TimestampMixin):
         nullable=False
     )
     status: Mapped[TicketStatus] = mapped_column(
-        Enum(TicketStatus),
+        Enum(TicketStatus, name="ticketstatus", native_enum=True),
         default=TicketStatus.ISSUED,
         nullable=False
     )

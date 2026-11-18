@@ -91,7 +91,10 @@ async def create_event(
             name=tt.name,
             description=tt.description,
             price=tt.price,
-            capacity=tt.capacity if hasattr(tt, "capacity") else getattr(tt, "quantity_available", 0),
+            quantity_available=tt.capacity,
+            quantity_reserved=0,
+            quantity_sold=0,
+            is_active=tt.is_active,
         )
         db.add(ticket_type)
 
@@ -184,7 +187,13 @@ async def add_ticket_type(
         )
     ticket_type = TicketTypeModel(
         event_id=event.id,
-        **tt_in.model_dump()
+        name=tt_in.name,
+        description=tt_in.description,
+        price=tt_in.price,
+        quantity_available=tt_in.capacity,
+        quantity_reserved=0,
+        quantity_sold=0,
+        is_active=tt_in.is_active,
     )
     db.add(ticket_type)
     await db.commit()
@@ -224,6 +233,8 @@ async def update_ticket_type(
         )
     update_data = tt_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        if field == "capacity":
+            field = "quantity_available"
         if hasattr(ticket_type, field):
             setattr(ticket_type, field, value)
 

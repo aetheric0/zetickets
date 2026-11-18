@@ -58,6 +58,14 @@ async def reserve_tickets(
             detail="Sales for this ticket tier are currently paused",
         )
 
+    # The initial schema had no reservation or sales counters. Do not guess
+    # those values for legacy ticket types or risk overselling them.
+    if ticket_type.quantity_reserved is None or ticket_type.quantity_sold is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ticket inventory requires reconciliation before reservations can be accepted",
+        )
+
     # 1. Check real remaining capacity
     if ticket_type.remaining_capacity < req.quantity:
         raise HTTPException(
@@ -73,6 +81,7 @@ async def reserve_tickets(
         user_id=current_user.id,
         ticket_type_id=ticket_type.id,
         quantity=req.quantity,
+        unit_price=ticket_type.price,
         total_amount=total_amount,
         status=OrderStatus.PENDING,
         payment_reference=f"PAY-{uuid4().hex[:12].upper()}",
@@ -88,7 +97,7 @@ async def reserve_tickets(
             ticket_type_id=ticket_type.id,
             order_id=order.id,
             ticket_code=f"TCK-{uuid4().hex[:10].upper()}",
-            status="reserved",
+            status=TicketStatus.RESERVED,
         )
         db.add(ticket)
     await db.commit()
@@ -130,6 +139,14 @@ async def checkout_order(
             detail=f"Invalid or non-pending order. Order status is {order.status}"
         )
 
+    # Historical orders may have no ticket type or reservation facts. Check
+    # before querying a nullable foreign key or changing inventory counters.
+    if order.ticket_type_id is None or order.quantity is None or order.expires_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This legacy order has incomplete reservation data",
+        )
+
     # Lock ticket_type row before checking expiration and counter transition
     tt_stmt = (
         select(TicketTypeModel)
@@ -137,18 +154,25 @@ async def checkout_order(
         .with_for_update()
     )
     tt_result = await db.execute(tt_stmt)
-    ticket_type = tt_result.scalar_one()
+    ticket_type = tt_result.scalar_one_or_none()
+    if ticket_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The order's ticket type is unavailable",
+        )
+
+    if ticket_type.quantity_reserved is None or ticket_type.quantity_sold is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ticket inventory requires reconciliation before checkout",
+        )
 
     # Verify reservation expiration
-    created_at = order.created_at
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=UTC)
-
-    order_expires_at: datetime = created_at + timedelta(
-        minutes=RESERVATION_TIMEOUT_MINUTES
-    )
     current_time = datetime.now(UTC)
-    order_qty = int(order.total_amount)
+    order_qty = order.quantity
+    order_expires_at = order.expires_at
+    if order_expires_at.tzinfo is None:
+        order_expires_at = order_expires_at.replace(tzinfo=UTC)
     if current_time > order_expires_at:
         order.status = OrderStatus.EXPIRED
         ticket_type.quantity_reserved -= order_qty

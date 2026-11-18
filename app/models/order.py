@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, Numeric, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +15,7 @@ from .base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.ticket import Ticket
+    from app.models.ticket import TicketType
     from app.models.user import User
 
 class Order(Base, TimestampMixin):
@@ -29,17 +31,25 @@ class Order(Base, TimestampMixin):
         ForeignKey("users.id"),
         nullable=False
     )
-    ticket_type_id: Mapped[uuid.UUID] = mapped_column()
+    # Nullable only for historical rows: the initial schema had no order to
+    # ticket-type link. New reservations always provide this value.
+    ticket_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ticket_types.id"), nullable=True
+    )
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False
     )
     status: Mapped[OrderStatus] = mapped_column(
-        Enum(OrderStatus),
+        Enum(OrderStatus, name="orderstatus", native_enum=True),
         default=OrderStatus.PENDING,
         nullable=False
     )
-    payment_reference: Mapped[str | None] = mapped_column(
+    payment_reference: Mapped[str] = mapped_column(
         String(100),
         unique=True,
         index=True,
@@ -48,5 +58,6 @@ class Order(Base, TimestampMixin):
 
     # Relationships
     user: Mapped[User] = relationship(back_populates="orders")
-    tickets: Mapped[list[Ticket]] = relationship(back_populates="orders")
+    ticket_type: Mapped[TicketType | None] = relationship(back_populates="orders")
+    tickets: Mapped[list[Ticket]] = relationship(back_populates="order")
 

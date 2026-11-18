@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.schemas.profile import OrganizerProfileResponse
+from app.models.user import UserRole
 
 
 class UserBase(BaseModel):
@@ -11,6 +12,7 @@ class UserBase(BaseModel):
     full_name: str | None = None
     is_active: bool = True
     is_superuser: bool = False
+    role: UserRole = UserRole.ATTENDEE
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -20,6 +22,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     full_name: str | None = None
+    role: UserRole | None = None
     password: str | None = None
     is_active: bool | None = None
     is_superuser: bool | None = None

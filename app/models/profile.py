@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.schemas.user import User
+    from app.models.user import User
 
 class OrganizerProfile(Base, TimestampMixin):
     """

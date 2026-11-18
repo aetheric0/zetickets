@@ -27,7 +27,7 @@ class EventUpdate(BaseModel):
 class EventResponse(EventBase):
     id: UUID
     organizer_id: UUID
-    is_published: bool
+    is_published: bool | None
     created_at: datetime
     updated_at: datetime
     ticket_types: list[TicketTypeResponse] = []

@@ -43,16 +43,16 @@ class User(Base, TimestampMixin):
         String(255),
         nullable=False,
     )
-    full_name: Mapped[str] = mapped_column(
+    full_name: Mapped[str | None] = mapped_column(
         String(255),
-        nullable=False,
+        nullable=True,
     )
     phone_number: Mapped[str | None] = mapped_column(
         String(30),
         nullable=True,
     )
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole, name="user_role_enum"),
+        Enum(UserRole, name="user_role_enum", values_callable=lambda enum: [item.value for item in enum]),
         default=UserRole.ATTENDEE,
         nullable=False,
     )
@@ -61,18 +61,21 @@ class User(Base, TimestampMixin):
         default=True,
         nullable=False,
     )
+    # Retained for compatibility with existing authorization code; role
+    # remains the canonical account classification.
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
     # Relationships
     organizer_profile: Mapped[OrganizerProfile | None] = relationship(
         "OrganizerProfile",
         back_populates="user",
         uselist=False,
-        cascade="all, delete-orphan"
+        passive_deletes=True
     )
     events: Mapped[list[Event]] = relationship(
         "Event",
         back_populates="organizer",
-        cascade="all, delete-orphan"
+        passive_deletes=True
     )
     orders: Mapped[list[Order]] = relationship(
         "Order",
