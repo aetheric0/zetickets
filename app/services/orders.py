@@ -394,5 +394,3 @@ async def expire_due_orders(
     except Exception:
         await session.rollback()
         raise
-
-
