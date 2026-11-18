@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, Enum, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,6 +29,10 @@ class TicketType(Base, TimestampMixin):
     Defines ticket tiers created by organizers for an event.
     """
     __tablename__ = "ticket_types"
+    __table_args__ = (
+        CheckConstraint("quantity_reserved IS NULL OR quantity_reserved >= 0", name="ck_ticket_types_reserved_nonnegative"),
+        CheckConstraint("quantity_sold IS NULL OR quantity_sold >= 0", name="ck_ticket_types_sold_nonnegative"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

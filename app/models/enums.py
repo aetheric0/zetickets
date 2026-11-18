@@ -10,3 +10,4 @@ class OrderStatus(str, PyEnum):
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
     EXPIRED = "EXPIRED"
+    PAYMENT_FAILED = "PAYMENT_FAILED"

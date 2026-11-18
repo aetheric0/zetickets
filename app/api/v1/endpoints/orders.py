@@ -1,210 +1,44 @@
-import secrets
-from datetime import UTC, datetime, timedelta
-from typing import Any
-from uuid import UUID, uuid4
+from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from fastapi import APIRouter, Header, HTTPException
 
 from app.core.deps import CurrentUser, SessionDep
-from app.models.order import Order as OrderModel
-from app.models.order import OrderStatus
-from app.models.ticket import Ticket as TicketModel
-from app.models.ticket import TicketStatus
-from app.models.ticket import TicketType as TicketTypeModel
-from app.schemas.order import (
-    OrderDetailResponse,
-    ReservationResponse,
-    ReserveTicketsRequest,
-)
+from app.schemas.order import OrderDetailResponse, ReservationResponse, ReserveTicketsRequest
+from app.services.orders import OrderOperationError, reserve_tickets as create_reservation
 
 router = APIRouter()
 
-RESERVATION_TIMEOUT_MINUTES = 10
 
-@router.post(
-    "/reserve",
-    response_model=ReservationResponse,
-    status_code=status.HTTP_201_CREATED
-)
+@router.post("/reserve", response_model=ReservationResponse, status_code=201)
 async def reserve_tickets(
     req: ReserveTicketsRequest,
     db: SessionDep,
-    current_user: CurrentUser
+    current_user: CurrentUser,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
 ) -> Any:
-    """
-    Atomically reserve tickets with row-level lock (FOR UPDATE).
-    Prevents overbooking during high-concurrency ticket drops.
-    """
-    # 0. Lock the TicketType row for concurrency safety
-    stmt = (
-        select(TicketTypeModel)
-        .where(TicketTypeModel.id == req.ticket_type_id, TicketTypeModel.is_active.is_(True))
-        .with_for_update()
-    )
-    result = await db.execute(stmt)
-    ticket_type = result.scalar_one_or_none()
-
-    if not ticket_type:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ticket tier unavailable"
+    try:
+        return await create_reservation(
+            db,
+            user_id=current_user.id,
+            ticket_type_id=req.ticket_type_id,
+            quantity=req.quantity,
+            idempotency_key=idempotency_key,
         )
+    except OrderOperationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    if not ticket_type.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_404_BAD_REQUEST,
-            detail="Sales for this ticket tier are currently paused",
-        )
 
-    # The initial schema had no reservation or sales counters. Do not guess
-    # those values for legacy ticket types or risk overselling them.
-    if ticket_type.quantity_reserved is None or ticket_type.quantity_sold is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Ticket inventory requires reconciliation before reservations can be accepted",
-        )
-
-    # 1. Check real remaining capacity
-    if ticket_type.remaining_capacity < req.quantity:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Only {ticket_type.remaining_capacity}tickets remaining for this tier.",
-        )
-    # 3. Calculate total and set expiration
-    total_amount = ticket_type.price * req.quantity
-    expires_at = datetime.now(UTC) + timedelta(minutes=RESERVATION_TIMEOUT_MINUTES)
-
-    # 4. Create pending order & adjust reserved counter
-    order = OrderModel(
-        user_id=current_user.id,
-        ticket_type_id=ticket_type.id,
-        quantity=req.quantity,
-        unit_price=ticket_type.price,
-        total_amount=total_amount,
-        status=OrderStatus.PENDING,
-        payment_reference=f"PAY-{uuid4().hex[:12].upper()}",
-        expires_at=expires_at,
-    )
-    ticket_type.quantity_reserved += req.quantity
-    db.add(order)
-    await db.flush()
-
-    # 5. Generate reserved ticket instances
-    for _ in range(req.quantity):
-        ticket = TicketModel(
-            ticket_type_id=ticket_type.id,
-            order_id=order.id,
-            ticket_code=f"TCK-{uuid4().hex[:10].upper()}",
-            status=TicketStatus.RESERVED,
-        )
-        db.add(ticket)
-    await db.commit()
-
-    order_stmt = (
-        select(OrderModel)
-        .options(selectinload(OrderModel.tickets))
-        .where(OrderModel.id == order.id)
-    )
-    result = await db.execute(order_stmt)
-
-    return result.scalar_one()
-
-@router.post(
-    "/{order_id}/checkout",
-    response_model=OrderDetailResponse,
-)
+@router.post("/{order_id}/checkout", response_model=OrderDetailResponse)
 async def checkout_order(
     order_id: UUID,
     db: SessionDep,
     current_user: CurrentUser,
 ) -> Any:
-    """
-    Confirm payment and transition order from PENDING TO COMPLETED.
-    Generates unique verifiable ticket tokens.
-    """
-    stmt = select(OrderModel).options(selectinload(OrderModel.tickets)).where(OrderModel.id == order_id, OrderModel.user_id == current_user.id).with_for_update()
-    result = await db.execute(stmt)
-    order = result.scalar_one_or_none()
-
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    if order.status != OrderStatus.PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid or non-pending order. Order status is {order.status}"
-        )
-
-    # Historical orders may have no ticket type or reservation facts. Check
-    # before querying a nullable foreign key or changing inventory counters.
-    if order.ticket_type_id is None or order.quantity is None or order.expires_at is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This legacy order has incomplete reservation data",
-        )
-
-    # Lock ticket_type row before checking expiration and counter transition
-    tt_stmt = (
-        select(TicketTypeModel)
-        .where(TicketTypeModel.id == order.ticket_type_id)
-        .with_for_update()
+    # Keep the existing operation closed until a trusted payment verifier is
+    # supplied by Phase 3. A client request alone cannot complete an order.
+    del order_id, db, current_user
+    raise HTTPException(
+        status_code=409,
+        detail="Checkout cannot complete an order without trusted payment evidence; the verifier is not configured",
     )
-    tt_result = await db.execute(tt_stmt)
-    ticket_type = tt_result.scalar_one_or_none()
-    if ticket_type is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The order's ticket type is unavailable",
-        )
-
-    if ticket_type.quantity_reserved is None or ticket_type.quantity_sold is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Ticket inventory requires reconciliation before checkout",
-        )
-
-    # Verify reservation expiration
-    current_time = datetime.now(UTC)
-    order_qty = order.quantity
-    order_expires_at = order.expires_at
-    if order_expires_at.tzinfo is None:
-        order_expires_at = order_expires_at.replace(tzinfo=UTC)
-    if current_time > order_expires_at:
-        order.status = OrderStatus.EXPIRED
-        ticket_type.quantity_reserved -= order_qty
-        for ticket in order.tickets:
-            ticket.status = TicketStatus.EXPIRED
-        await db.commit()
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Reservation expired",
-        )
-
-    # Transition counters: reserved -> sold(uses order.quantity, NOT total_amount)
-    ticket_type.quantity_reserved -= order_qty
-    ticket_type.quantity_sold += order_qty
-    order.status = OrderStatus.COMPLETED
-
-    # Update existing reserved tickets to valid active status with unique tokens
-    for ticket in order.tickets:
-        ticket.status = TicketStatus.ISSUED
-        ticket.ticket_code = f"ZET-{secrets.token_hex(6).upper()}"
-    await db.commit()
-
-    # # Count tickets per tier in this order
-    # tier_counts: dict[UUID, int] = {}
-    # for ticket in order.tickets:
-    #     ticket.status = "valid"
-    #     tier_counts[ticket.ticket_type_id] = tier_counts.get(ticket.ticket_type_id, 0) + 1
-    # Generate individual tickets
-
-
-    # Load with tickets relation
-    result_stmt = select(OrderModel).options(selectinload(OrderModel.tickets)).where(OrderModel.id == order.id)
-    result = await db.execute(result_stmt)
-    return result.scalar_one()
