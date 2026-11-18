@@ -5,11 +5,22 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "email-validator>=2.4.0",
+    "fastapi[standard]>=0.163.1",
     "pwdlib[bcrypt]>=0.3.1",
+    "pydantic>=2",
+    "pydantic-settings>=2.16.3",
+    "pyjwt>=2.15.1",
     "python-jose[cryptography]>=3.5.0",
+    "sqlalchemy[asyncio]>=2.0.0",
 ]
 
 [dependency-groups]
 dev = [
-    "types-passlib>=1.7.7.20260211",
+    "aiosqlite>=0.22.1",
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
 ]

@@ -1,18 +1,12 @@
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum as PyEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.enums import OrderStatus
 from app.schemas.ticket import TicketResponse
 
-
-class OrderStatus(str, PyEnum):
-    PENDING = "PENDING"
-    COMPLETED = "COMPLETED"
-    CANCELLED = "CANCELLED"
-    EXPIRED = "EXPIRED"
 
 class ReserveTicketsRequest(BaseModel):
     ticket_type_id: UUID

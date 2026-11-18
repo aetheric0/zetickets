@@ -8,7 +8,7 @@ from sqlalchemy import Enum, ForeignKey, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.schemas.order import OrderStatus
+from app.models.enums import OrderStatus
 
 from .base import Base, TimestampMixin
 

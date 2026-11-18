@@ -4,12 +4,11 @@ from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-import app.schemas  # Registers all schema models onto Base.metadata
 from alembic import context
 
 # --- Import App Config & Schemas ---
 from app.core.config import settings
-from app.schemas.base import Base
+from app.models import Base
 
 config = context.config
 
