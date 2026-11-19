@@ -25,8 +25,7 @@ from .base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.payment import PaymentAttempt, PaymentFulfillment
-    from app.models.ticket import Ticket
-    from app.models.ticket import TicketType
+    from app.models.ticket import Ticket, TicketType
     from app.models.user import User
 
 class Order(Base, TimestampMixin):
