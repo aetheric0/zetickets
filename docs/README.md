@@ -33,6 +33,7 @@ See the [ADR index](decisions/README.md). ADRs 0005–0011 capture accepted prov
 - [Phase 2 execution log](phase-2-execution-log.md)
 - [Phase 3 Package 1 post-mortem](postmortems/phase-3-package-1-security-foundation.md)
 - [Phase 3 Package 2 post-mortem](postmortems/phase-3-package-2-payment-data-model.md)
+- [Portfolio closeout report](postmortems/portfolio-closeout.md)
 - [Post-mortem index](postmortems/README.md)
 
 Official Paystack sources were reviewed on 2026-11-19 and linked from the provider comparison. Provider features, prices, account settings and terms can change.

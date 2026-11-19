@@ -1,6 +1,6 @@
 # Zetickets
 
-Zetickets is an early-stage backend for event, ticket-tier, reservation and order management. The project is being hardened in five engineering phases before payments or production deployment are introduced.
+Zetickets is an early-stage ticketing backend for managing event inventory and time-limited ticket reservations. Its engineering work focuses on transactional inventory correctness, auditable payment foundations and safe evolution of historical data.
 
 > **Status:** Phases 1 and 2 have repository-level and isolated PostgreSQL verification. Phase 3 Package 1 security foundation and Package 2 payment persistence are implemented and verified on a fresh disposable PostgreSQL 18.6 cluster. Provider integration and payment behavior have not started. The runtime currently exposes only `GET /health`. This project is not production-ready.
 
@@ -100,7 +100,7 @@ Read the [provider comparison](docs/payments/provider-comparison.md), [payment a
 - Make webhook, payment, refund and fulfillment transitions idempotent and auditable.
 - Preserve unknown historical facts and minimize retained personal/payment data.
 
-JWT creation and validation now use the same canonical `JWT_SECRET`, which is required and must contain at least 32 characters; `ALGORITHM` is also required and non-empty. Missing/invalid configuration fails during settings validation, and the secret is represented as a Pydantic `SecretStr`. Existing deployments that configure only `SECRET_KEY` must set `JWT_SECRET` before starting the application; values are not copied automatically. Broader authentication, ownership and role checks still require hardening. These features must not be treated as production-ready.
+JWT creation and validation use the same canonical `JWT_SECRET`, which is required and must contain at least 32 non-whitespace characters; `ALGORITHM` is also required and non-empty. Missing or invalid values fail during settings validation, and the secret is represented as a Pydantic `SecretStr`. Existing deployments that configure only `SECRET_KEY` must set `JWT_SECRET` before starting the application; values are not copied automatically. Database connection settings still default to empty strings and need stronger validation before deployment. Broader authentication, ownership and role checks also require hardening. These features must not be treated as production-ready.
 
 ## Database and migrations
 
@@ -135,11 +135,11 @@ uv run alembic upgrade head
 
 7. Visit `http://127.0.0.1:8000/health` or the generated API documentation at `http://127.0.0.1:8000/docs`.
 
-The Compose file defines PostgreSQL 16 and API services, but the API container applies migrations on startup and PostgreSQL uses a persistent volume. Compose was not run or verified in this review. It does not define the Redis service mentioned in the old README.
+The Compose file defines PostgreSQL 16 and API services, but the API container applies migrations on startup and PostgreSQL uses a persistent volume. Its fallback database credentials are for local development only and are not suitable for deployment. Compose was not run or verified in this review. It does not define the Redis service mentioned in the old README.
 
 ## Environment-variable reference
 
-Names and purposes only; this document intentionally contains no values. Settings are declared in [`app/core/config.py`](app/core/config.py). Required/optional validation is incomplete and should be improved before deployment.
+Names and purposes only; this document intentionally contains no values. Settings are declared in [`app/core/config.py`](app/core/config.py). `JWT_SECRET` and `ALGORITHM` are validated at startup. Database connection settings are not yet validated as required values.
 
 | Variable | Purpose in current source |
 |---|---|
@@ -163,13 +163,23 @@ Names and purposes only; this document intentionally contains no values. Setting
 
 The dependency source of truth is `pyproject.toml` plus `uv.lock`; `requirements.txt` is also present for the Docker build. No provider SDK is installed.
 
-Database-independent regression tests can be run with:
+The four database-independent compatibility, payment-model, order-service and security suites can be run without reading the repository `.env` file or connecting to a database by running from `/tmp` with test-only settings:
 
 ```bash
-uv run --no-sync python -m pytest -q \
-  app/test_model_schema_compatibility.py \
-  app/test_order_transactions.py
+REPO_ROOT="$(pwd)"
+(
+  cd /tmp
+  JWT_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+  ALGORITHM=HS256 \
+  uv run --project "$REPO_ROOT" --no-sync python -m pytest -q \
+    "$REPO_ROOT/app/test_model_schema_compatibility.py" \
+    "$REPO_ROOT/app/test_payment_models.py" \
+    "$REPO_ROOT/app/test_order_transactions.py" \
+    "$REPO_ROOT/app/test_security_foundation.py"
+)
 ```
+
+This command does not run the PostgreSQL integration modules. Those require the explicitly guarded disposable test database described below.
 
 The PostgreSQL integration tests are in `app/test_orders_postgres.py`. They require explicit `ZETICKETS_TEST_DATABASE_URL` and `ZETICKETS_TEST_CLUSTER_ID` and reject targets outside their dedicated loopback test database identity. Only use a freshly provisioned disposable PostgreSQL test cluster; they do not make an ordinary application database safe to test against. The PostgreSQL provisioning used in Phase 2 was temporary and is not a supported setup script.
 
@@ -188,7 +198,7 @@ The only registered application route is `GET /health`. FastAPI exposes its gene
 - Phase 3: architecture/security direction accepted; Packages 1 and 2 are implemented. Provider integration, orchestration, authorization hardening and subsequent packages remain. Account-specific readiness and commercial terms are open.
 - Phases 4–5: not started.
 
-The [engineering roadmap](docs/engineering-roadmap.md) is authoritative. Use the [documentation index](docs/README.md) to find architecture, payments, security and ADR material.
+The [engineering roadmap](docs/engineering-roadmap.md) is authoritative. Use the [documentation index](docs/README.md) to find architecture, payments, security, ADRs and engineering post-mortems, including the [portfolio closeout report](docs/postmortems/portfolio-closeout.md).
 
 ## Contribution and development workflow
 

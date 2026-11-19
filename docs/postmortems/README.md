@@ -8,3 +8,4 @@ Include the observed defects, root causes, impact, correction rationale, affecte
 
 - [Phase 3 Package 1: Security Foundation](phase-3-package-1-security-foundation.md)
 - [Phase 3 Package 2: Payment Data Model](phase-3-package-2-payment-data-model.md)
+- [Portfolio closeout](portfolio-closeout.md)
