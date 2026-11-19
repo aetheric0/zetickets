@@ -1,7 +1,8 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from jose import jwt
+import jwt
+from jose import jwt as jose_jwt
 from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
 
@@ -38,9 +39,18 @@ def create_access_token(
         "sub": str(subject),
     }
 
-    encoded_jwt = jwt.encode(
+    encoded_jwt = jose_jwt.encode(
         to_encode,
-        settings.JWT_SECRET,
+        settings.JWT_SECRET.get_secret_value(),
         algorithm=settings.ALGORITHM
     )
     return encoded_jwt
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    """Verify a token using the same validated key and algorithm as signing."""
+    return jwt.decode(
+        token,
+        settings.JWT_SECRET.get_secret_value(),
+        algorithms=[settings.ALGORITHM],
+    )

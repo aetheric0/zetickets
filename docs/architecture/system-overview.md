@@ -6,7 +6,7 @@ Zetickets is a Python 3.14 FastAPI application using Pydantic settings and schem
 
 The runtime currently exposes `GET /health` and FastAPI's generated documentation endpoints. `app/api/v1/api.py` composes authentication and user routers, but `app/main.py` does not include that router. Event, ticket and order endpoint modules are also not included by the v1 router. They are implementation modules, not currently available public API routes. See [`app/api/v1/api.py`](../../app/api/v1/api.py), [`app/api/v1/endpoints/`](../../app/api/v1/endpoints/) and [`app/main.py`](../../app/main.py).
 
-The order service is the only business service currently present. It performs reservation creation, cancellation, expiry cleanup and an internal payment-failure operation. It has no provider client, payment-success transition, webhook handler or scheduler. The Phase 2 PostgreSQL integration module documents the tested database behavior, but does not make those unregistered endpoints available.
+The order service is the only business service currently present. It performs reservation creation, cancellation and expiry cleanup. Payment failure recording is explicitly disabled until trusted provider verification is implemented; no caller-supplied outcome can release inventory. There is no provider client, payment-success transition, webhook handler or scheduler. The Phase 2 PostgreSQL integration module documents the tested database behavior, but does not make those unregistered endpoints available.
 
 ## Runtime flow
 
@@ -27,7 +27,7 @@ Alembic revisions are under [`alembic/versions/`](../../alembic/versions/). The 
 ## Architecture gaps
 
 - The v1 API router is not mounted in the FastAPI application.
-- JWT creation uses `JWT_SECRET`, while JWT validation uses `SECRET_KEY`; configuration defaults are empty and settings do not currently validate that the values are configured consistently. See [`app/core/security.py`](../../app/core/security.py) and [`app/core/deps.py`](../../app/core/deps.py).
+- JWT creation and validation use the same required `JWT_SECRET` (`SecretStr`, minimum 32 characters) and non-empty `ALGORITHM`; settings validation fails at startup when either is absent/invalid. Existing deployments using only `SECRET_KEY` must configure `JWT_SECRET` explicitly. Broader authorization/ownership hardening remains. See [`app/core/config.py`](../../app/core/config.py), [`app/core/security.py`](../../app/core/security.py) and [`app/core/deps.py`](../../app/core/deps.py).
 - Endpoint modules contain authorization and response-handling defects that need security/API phases, not changes in this documentation-only milestone.
 - There is no payment-attempt persistence model or webhook/reconciliation infrastructure.
 - Docker Compose describes PostgreSQL and API services but not Redis. The API command runs migrations at container startup, and the database service uses a persistent named volume. Neither compose behavior nor a production deployment has been verified here.

@@ -66,5 +66,10 @@ The forward-only revisions were executed only against an empty temporary databas
 - No expiry scheduler is configured; an authorized runtime integration must invoke `expire_due_orders` later.
 - Successful payment completion, payment verification, currency selection and late-success/refund reconciliation are intentionally deferred. Checkout currently rejects all requests.
 - The `VerifiedPaymentFailure` value is an internal type boundary, not cryptographic proof. Phase 3 must ensure only an authenticated verifier calls that service.
+
 - The order router remains unregistered; route registration is Phase 4.
 - Existing legacy rows with unknown order or inventory facts remain unreconciled and ineligible for unsafe transitions.
+
+### Phase 3 Package 1 follow-up
+
+The constructible value and its state-changing service operation were subsequently removed. Payment failure recording now fails closed without accepting caller-supplied evidence or changing order/inventory state; see the [Phase 3 Package 1 post-mortem](phase-3-package-1-security-foundation.md).

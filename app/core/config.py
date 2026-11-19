@@ -3,7 +3,9 @@ from typing import Annotated, Any, Literal, cast
 from pydantic import (
     AnyUrl,
     BeforeValidator,
+    SecretStr,
     computed_field,
+    field_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -46,9 +48,21 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = ""
 
     PAYSTACK_SECRET_KEY: str = ""
-    JWT_SECRET: str = ""
-    ALGORITHM: str = ""
-    SECRET_KEY: str = ""
+    JWT_SECRET: SecretStr
+    ALGORITHM: str
+
+    @field_validator("ALGORITHM")
+    @classmethod
+    def validate_jwt_algorithm(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("ALGORITHM must not be empty")
+        return value
+
+    def model_post_init(self, __context: Any) -> None:
+        secret = self.JWT_SECRET.get_secret_value()
+        if len(secret) < 32 or not secret.strip():
+            # Raise a message without including Pydantic's raw input context.
+            raise ValueError("JWT_SECRET must contain at least 32 non-whitespace characters")
 
     LOG_FILE: str | None = ""
 

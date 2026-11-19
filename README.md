@@ -10,7 +10,7 @@ Zetickets is an early-stage backend for event, ticket-tier, reservation and orde
 |---|---|
 | Canonical SQLAlchemy models, Pydantic compatibility and Alembic revisions | Implemented; migration chain exercised on a fresh disposable PostgreSQL 18.6 database. Existing-database upgrade compatibility remains unverified. |
 | Transactional reservation, persisted quantity/expiry, inventory locking, cancellation, expiry and idempotency | Implemented in the order service and verified by database-independent tests plus a disposable PostgreSQL integration suite. |
-| User authentication and user/event/ticket/order endpoint modules | Code exists, but routes are not mounted in the application. Authentication/configuration and authorization defects remain. |
+| User authentication and user/event/ticket/order endpoint modules | Code exists, but routes are not mounted in the application. JWT signing/verification now share validated `JWT_SECRET` configuration; broader authorization defects remain. |
 | Payment-attempt persistence, payment provider, payment verification, webhook handling, refunds and reconciliation | Planned. No provider code or payment-success transition exists. |
 | Deployment, CI and production operations | Deferred and unverified. |
 
@@ -70,7 +70,7 @@ See [domain model](docs/architecture/domain-model.md) for nullability and relati
 
 The Phase 2 service validates quantity and an idempotency key, locks the ticket-type row, checks inventory, increments reserved quantity and writes a pending order and reserved ticket rows in one transaction. New reservations snapshot the ticket price and expire after ten minutes. Cancellation, expiry cleanup and internal verified-failure handling release reserved inventory transactionally and idempotently.
 
-There is no successful-payment transition. The existing checkout endpoint code returns HTTP 409, and the endpoint module is not mounted. The internal `VerifiedPaymentFailure` Python value is not cryptographic proof: Phase 3 must require independently verified, persisted provider evidence before changing payment or fulfillment state.
+There is no successful-payment transition. The existing checkout endpoint code returns HTTP 409, and the endpoint module is not mounted. The former constructible `VerifiedPaymentFailure` value and its inventory-releasing service path have been removed. Payment failure recording now fails closed until an application-owned provider verification flow is implemented; it does not alter order or inventory state.
 
 See [reservation lifecycle](docs/architecture/reservation-lifecycle.md) and [Phase 2 execution log](docs/phase-2-execution-log.md).
 
@@ -97,7 +97,7 @@ Read the [provider comparison](docs/payments/provider-comparison.md), [payment a
 - Make webhook, payment, refund and fulfillment transitions idempotent and auditable.
 - Preserve unknown historical facts and minimize retained personal/payment data.
 
-Important source gaps are documented in the [threat model](docs/security/threat-model.md): JWT issuance uses `JWT_SECRET`, while validation uses `SECRET_KEY`; both have empty defaults. Authentication and role checks require hardening. These features must not be treated as production-ready.
+JWT creation and validation now use the same canonical `JWT_SECRET`, which is required and must contain at least 32 characters; `ALGORITHM` is also required and non-empty. Missing/invalid configuration fails during settings validation, and the secret is represented as a Pydantic `SecretStr`. Existing deployments that configure only `SECRET_KEY` must set `JWT_SECRET` before starting the application; values are not copied automatically. Broader authentication, ownership and role checks still require hardening. These features must not be treated as production-ready.
 
 ## Database and migrations
 
@@ -145,9 +145,8 @@ Names and purposes only; this document intentionally contains no values. Setting
 | `POSTGRES_USER` | PostgreSQL username. |
 | `POSTGRES_PASSWORD` | PostgreSQL password; secret. |
 | `POSTGRES_DB` | Database name. |
-| `JWT_SECRET` | JWT signing key used by token creation. |
-| `SECRET_KEY` | JWT validation key used by request authentication; currently inconsistent with signing key use. |
-| `ALGORITHM` | JWT signing/validation algorithm; configuration must be explicitly validated. |
+| `JWT_SECRET` | Required canonical JWT signing and verification key; minimum 32 characters; secret. |
+| `ALGORITHM` | Required JWT signing/verification algorithm identifier. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime. |
 | `ENVIRONMENT` | Runtime mode (`local`, `staging` or `production`). |
 | `API_V1_STR` | Configured v1 prefix used by the OAuth token URL, but the router is not mounted. |

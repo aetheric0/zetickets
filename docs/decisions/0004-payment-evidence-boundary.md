@@ -1,6 +1,6 @@
 # ADR 0004: Payment Evidence Boundary
 
-- **Status:** Accepted; successful payment verification deferred to Phase 3
+- **Status:** Accepted; amended by Phase 3 Package 1
 - **Date:** 2026-11-18
 
 ## Context
@@ -10,9 +10,9 @@ The existing checkout operation marked an order complete based only on an authen
 ## Decision
 
 - Client checkout requests cannot complete an order; the existing operation returns a conflict until trusted payment evidence is available.
-- The service accepts a provider-neutral `VerifiedPaymentFailure` only for an internal caller, records its reference, and releases a pending reservation atomically. The type itself is not proof of authenticity; Phase 3 must ensure only a verifier constructs/passes it.
+- The former `VerifiedPaymentFailure` object and service path were removed in Phase 3 Package 1 because ordinary callers could construct the object and trigger an inventory release. Payment failure recording now fails closed without accepting an outcome/evidence argument or touching database state. A future application-owned verification orchestration must verify provider status before introducing a transactional payment transition.
 - Preserve legacy `FAILED` without assigning it new meaning. Use explicit `PAYMENT_FAILED` for the new trusted-failure path.
-- Do not implement successful payment completion until Phase 3 defines trusted evidence and the product's currency source. Currency remains nullable and is never guessed.
+- Do not implement successful payment completion until the provider adapter/orchestration package exists. Accepted Phase 3 policy now sets KES-only initial transactions; historical currency remains nullable and is never guessed.
 
 ## Alternatives considered
 
@@ -21,10 +21,8 @@ The existing checkout operation marked an order complete based only on an authen
 
 ## Consequences and evidence
 
-Checkout rejection is covered by the database-independent service suite. Trusted failure evidence handling is verified for transaction/release behavior on the disposable PostgreSQL 18.6 database; no provider integration or new route is added. Successful payment verification and any provider-specific security are not implemented.
+Checkout rejection and the fail-closed payment failure operation are covered by database-independent tests. The former failure transition was covered in Phase 2, but is intentionally disabled after inspection showed that its constructible object did not authenticate provider evidence. No provider integration or new route exists. Successful payment verification and provider-specific security remain unimplemented.
 
 ## Open questions
 
-- Which payment provider and verification channel will Phase 3 use?
-- What currency is authoritative for ticket pricing and order evidence?
-- How should a verified success arriving after reservation expiry be reconciled/refunded?
+- The owner-approved direction is Paystack first, KES-only initially, and refund of a verified late success when inventory/reservation is invalid; see ADRs 0006, 0009 and 0010. Merchant-specific eligibility and commercial terms remain open.

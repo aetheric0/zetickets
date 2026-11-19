@@ -17,13 +17,13 @@ Source of truth: [`app/services/orders.py`](../../app/services/orders.py), [`app
 | Reserve | Active tier, known counters, sufficient capacity | Creates `PENDING` order and reserved tickets; increments reserved quantity. |
 | Cancel | Owned pending order, known consistent inventory | Sets `CANCELLED`; releases reserved inventory once; cancels reserved tickets. |
 | Expire | Due pending reservation, known consistent inventory | Sets `EXPIRED`; releases inventory once; expires reserved tickets. Uses bounded `SKIP LOCKED` batches. |
-| Verified payment failure | Internal caller supplies `VerifiedPaymentFailure` | Records reference and releases pending reservation; if already expired, records evidence without a second release. |
+| Payment failure recording | No trusted provider verifier is configured | Fails closed with `PaymentVerificationUnavailable`; no database read/write or inventory change. |
 | Checkout success | No trusted payment verifier exists | The current checkout operation returns HTTP 409; it cannot complete the order. |
 
-The `VerifiedPaymentFailure` dataclass is only an internal naming/type boundary. Any Python caller can construct it, so it is not cryptographic or provider evidence. Phase 3 must not accept it, a caller-provided status, or a webhook body as proof of provider success. Provider verification and persisted evidence must guard transitions.
+The former `VerifiedPaymentFailure` dataclass and the service operation that accepted it were removed in Phase 3 Package 1. A Python object or caller-provided status is not provider evidence. There is no current payment-success or payment-failure state transition. Checkout remains HTTP 409, and failure recording is disabled until an application-owned provider verification flow is implemented. Reservation expiry and user cancellation continue to release inventory transactionally.
 
 ## Payment lifecycle is not yet modeled
 
 There is no payment attempt record, provider account/mode, provider transaction reference, webhook event log or refund state. `payment_reference` is a local order field; it is not currently bound to a provider. A single evidence string cannot express multiple attempts, pending verification, refunds or conflicting outcomes.
 
-See the [payment architecture proposal](payment-architecture.md) and [lifecycle/reconciliation proposal](../payments/lifecycle-and-reconciliation.md). Phase 3 must settle late-payment, multiple-attempt and refund policies before implementing the success path.
+See the [payment architecture](payment-architecture.md), [lifecycle/reconciliation requirements](../payments/lifecycle-and-reconciliation.md) and [Phase 3 execution plan](../phase-3-implementation-plan.md). Provider adapter, payment persistence, successful/failed provider transitions, refunds and reconciliation remain deferred.

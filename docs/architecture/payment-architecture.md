@@ -10,7 +10,7 @@ The application service will use a provider-neutral interface with operations to
 
 Persist a local payment attempt before calling a provider. It associates one order with a provider/account/environment, an application-generated idempotency reference, provider transaction reference, immutable amount/currency snapshot, normalized state, and timestamps. Multiple attempts may exist historically, but do not allow another unresolved attempt while an earlier one has an ambiguous outcome. Enforce provider-reference uniqueness within provider account and environment. Provider response timeouts are unknown outcomes until verified/reconciled.
 
-Use an append-only event/evidence inbox and separate refund records. Authenticate webhook bytes, persist/deduplicate the receipt, then independently query the provider. A Python object, caller status, redirect parameter or webhook payload is not authenticated evidence merely because of its type or shape. The trusted orchestration service calls the adapter verifier and only persists a verified result after matching merchant account, environment, reference, amount and currency. The Phase 2 `VerifiedPaymentFailure` value is constructible and is not a trusted proof boundary.
+Use an append-only event/evidence inbox and separate refund records. Authenticate webhook bytes, persist/deduplicate the receipt, then independently query the provider. A Python object, caller status, redirect parameter or webhook payload is not authenticated evidence merely because of its type or shape. The future trusted orchestration service must call the adapter verifier and only persist a verified result after matching merchant account, environment, reference, amount and currency. Phase 3 Package 1 removed the Phase 2 `VerifiedPaymentFailure` value and disabled that state-changing path; no payment transition is currently available.
 
 ## State and transaction rules
 
@@ -36,7 +36,7 @@ Accounting invariants before implementation:
 
 ## Security and operations
 
-Resolve the JWT signing/verification mismatch (`JWT_SECRET` versus `SECRET_KEY`) before payment-protected operations: use one required validated signing/verification key, fail closed when absent, and test matching key success plus wrong-key/expiry rejection. Never expose provider credentials. Separate sandbox/live credentials and account identities; rotate secrets without logging values. Prefer provider-hosted checkout to avoid handling card data. Authorization must enforce order ownership and narrowly scoped audited administrative refund/reconciliation/payout permissions.
+Phase 3 Package 1 resolved the JWT signing/verification mismatch: both use the required validated `JWT_SECRET` and `ALGORITHM`; invalid or absent values fail configuration. Deployments using only `SECRET_KEY` must configure `JWT_SECRET`. Never expose provider credentials. Separate sandbox/live credentials and account identities; rotate secrets without logging values. Prefer provider-hosted checkout to avoid handling card data. Authorization must enforce order ownership and narrowly scoped audited administrative refund/reconciliation/payout permissions.
 
 Paystack documentation currently describes Kenya card and M-PESA channels, server-side transaction verification, webhook signatures and refunds. Account activation, enabled channels, live eligibility, settlement, merchant terms and refund capability must be checked for Zetickets before production. See [provider comparison](../payments/provider-comparison.md) and [security controls](../security/controls-and-verification.md).
 

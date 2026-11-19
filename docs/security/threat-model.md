@@ -2,7 +2,7 @@
 
 **Scope:** current source boundary plus proposed payment flow. The controls below are requirements, not claims that they are implemented. Security review date: 2026-11-19. See [verification strategy](controls-and-verification.md).
 
-Current source findings: `app/main.py` only mounts `/health`; the v1 router is not mounted. [`app/core/security.py`](../../app/core/security.py) signs JWTs with `JWT_SECRET`, while [`app/core/deps.py`](../../app/core/deps.py) validates them using `SECRET_KEY`; both default to empty strings in [`app/core/config.py`](../../app/core/config.py). [`app/services/orders.py`](../../app/services/orders.py) exposes an internal `VerifiedPaymentFailure` dataclass that is constructible by any Python caller and is not cryptographic proof. Payment-success/webhook code does not exist. These findings are documented for Phase 3/4; this review does not change application code.
+Current source findings: `app/main.py` only mounts `/health`; the v1 router is not mounted. Phase 3 Package 1 corrected the JWT key mismatch: token creation and validation use required `JWT_SECRET` (`SecretStr`, minimum 32 characters) and non-empty `ALGORITHM`; missing/invalid config fails settings validation. Deployments using only legacy `SECRET_KEY` must configure `JWT_SECRET`. JWT validation logs a generic failure without token/error detail. The constructible `VerifiedPaymentFailure` dataclass and state-changing service path were removed; `record_payment_failure` now fails closed without reading or mutating the database session. There is still no provider client, payment-success transition or webhook code.
 
 ## Threat register
 
@@ -11,9 +11,9 @@ Current source findings: `app/main.py` only mounts `/health`; the v1 router is n
 - **Asset:** user accounts, orders, payment operations, signing keys.
 - **Attack vector:** blank/default secrets, signer/verifier key mismatch, weak algorithm configuration, leaked or stale tokens.
 - **Impact:** login tokens fail validation or can be forged if deployment uses weak/misconfigured values; unauthorized actions may follow.
-- **Prevention:** fail startup if required secrets are absent/weak; use one explicit validated JWT signing/verification configuration, algorithm allowlist, short-lived tokens and documented rotation. Never include secret values in logs.
+- **Prevention:** require validated `JWT_SECRET` and non-empty `ALGORITHM`; use the same values for signing and verification, fail startup for missing/short secrets, retain signature and expiry validation, and define rotation. Never include secret values or token-validation details in logs.
 - **Detection/recovery:** alert on auth failures/anomalous token use; rotate compromised keys and invalidate affected sessions.
-- **Tests:** missing/weak config fails closed; tokens signed by the configured key verify; wrong key/algorithm, expired token and malformed claims are rejected.
+- **Tests:** implemented Package 1 coverage verifies missing/short config fails without echoing the value; application-created token verifies; wrong key, malformed token, expiry and missing subject are rejected. Rotation behavior remains unimplemented.
 
 ### T2 — Insecure direct object reference / order ownership bypass
 
@@ -65,7 +65,7 @@ Current source findings: `app/main.py` only mounts `/health`; the v1 router is n
 - **Asset:** idempotent order/payment transitions and financial ledger.
 - **Attack vector:** provider retries or operator resends an event; attacker replays a previously valid delivery; stale event arrives after terminal state.
 - **Impact:** duplicate ticket issue, repeated inventory release, duplicate refund or state regression.
-- **Prevention:** durable inbox and deduplication keyed by provider account/environment plus stable event/transaction identity; timestamp/replay checks where supported; lock attempt/order; enforce unique transition/effect constraints; handle terminal conflicts by reconciliation.
+- **Prevention:** when implemented, use durable inbox and deduplication keyed by provider account/environment plus stable event/transaction identity; timestamp/replay checks where supported; lock attempt/order; enforce unique transition/effect constraints; handle terminal conflicts by reconciliation. Package 1 currently has no webhook path.
 - **Detection/recovery:** track duplicate counts and event age; compare event inbox to payment ledger/provider reports; reprocess only idempotently.
 - **Tests:** same event multiple times, resend under new signature timestamp, event reordering, duplicate processing under concurrency.
 

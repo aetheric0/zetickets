@@ -28,10 +28,10 @@ from app.models.user import User, UserRole
 from app.services.orders import (
     IdempotencyConflict,
     InsufficientInventory,
-    VerifiedPaymentFailure,
+    PaymentVerificationUnavailable,
     cancel_pending_order,
     expire_due_orders,
-    record_verified_payment_failure,
+    record_payment_failure,
     reserve_tickets,
 )
 
@@ -239,20 +239,20 @@ async def test_expiry_cleanup_releases_inventory_once(pg_sessions):
 
 
 @pytest.mark.asyncio
-async def test_payment_failure_releases_inventory_once(pg_sessions):
+async def test_payment_failure_without_provider_verification_preserves_inventory(pg_sessions):
     user_id, _, ticket_type_id = await seed_inventory(pg_sessions)
     order = await reserve(pg_sessions, user_id=user_id, ticket_type_id=ticket_type_id, quantity=2)
-    evidence = VerifiedPaymentFailure(f"verified-decline-{uuid4().hex}")
     async with pg_sessions() as session:
-        await record_verified_payment_failure(session, order_id=order.id, evidence=evidence)
-    async with pg_sessions() as session:
-        await record_verified_payment_failure(session, order_id=order.id, evidence=evidence)
+        with pytest.raises(PaymentVerificationUnavailable):
+            await record_payment_failure(session, order_id=order.id)
     inventory = await read_inventory(pg_sessions, ticket_type_id)
     async with pg_sessions() as session:
         saved_order = await session.get(Order, order.id)
-    assert inventory.quantity_reserved == 0
-    assert saved_order.status is OrderStatus.PAYMENT_FAILED
-    assert saved_order.payment_evidence_reference == evidence.evidence_reference
+        saved_tickets = list((await session.execute(select(Ticket).where(Ticket.order_id == order.id))).scalars())
+    assert inventory.quantity_reserved == 2
+    assert saved_order.status is OrderStatus.PENDING
+    assert saved_order.payment_evidence_reference is None
+    assert all(ticket.status is TicketStatus.RESERVED for ticket in saved_tickets)
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 # Phase 3 implementation plan: security and payments
 
-**Status:** Planning specification only. No package below has been implemented. Phase 3 follows completed Phase 1/2; no Phase 4 router rollout or Phase 5 deployment work starts automatically. Approved direction: Paystack first, KES initial only, provider-independent internals, platform collection/separate organizer settlement, and refund verified late success when reservation/inventory is invalid.
+**Status:** Package 1 is implemented and recorded in the [Package 1 post-mortem](postmortems/phase-3-package-1-security-foundation.md); Packages 2–7 remain planned. Phase 3 follows completed Phase 1/2; no Phase 4 router rollout or Phase 5 deployment work starts automatically. Approved direction: Paystack first, KES initial only, provider-independent internals, platform collection/separate organizer settlement, and refund verified late success when reservation/inventory is invalid.
 
 ## Work package dependency map
 
@@ -14,6 +14,8 @@ WP7 operational readiness depends on verified WP2–WP6 behavior and deployment 
 WP2 and WP3 may be designed in parallel once WP1 defines trust boundaries, but their contracts must converge before orchestration. Commercial/account-specific checks are gates before live transactions, not blockers for sandbox coding. No fee, commission, tax, reserve, payout timing or account eligibility is assumed.
 
 ## WP1 — Security foundation
+
+**Execution note:** Package 1 corrected the JWT key mismatch with required `JWT_SECRET` and `ALGORITHM`, and removed caller-constructible payment-failure evidence. The payment failure operation now fails closed without touching the session. Authorization/ownership policy, audit persistence, key rotation and verified provider orchestration remain outstanding; WP1 as a whole is not complete.
 
 - **Scope:** Resolve `JWT_SECRET`/`SECRET_KEY` mismatch; fail-closed secret validation; authorization/ownership matrix; replace caller-constructible payment evidence trust with service-owned provider verification; define audit events and secret handling.
 - **Likely components:** `app/core/config.py`, `app/core/security.py`, `app/core/deps.py`, auth/authorization dependencies, `app/services/orders.py` payment boundary, security tests and configuration docs.

@@ -1,6 +1,6 @@
 # Engineering documentation
 
-This index links to the canonical engineering documents. The roadmap controls phase ordering; decision records capture decisions and proposals; architecture and security documents explain the current source and proposed Phase 3 design.
+This index links to the canonical engineering documents. The roadmap controls phase ordering; decision records capture accepted decisions; architecture and security documents distinguish current source behavior from Phase 3 requirements.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ This index links to the canonical engineering documents. The roadmap controls ph
 ## Security
 
 - [Threat model](security/threat-model.md) — assets, threats, controls, detection/recovery and tests.
-- [Controls and verification strategy](security/controls-and-verification.md) — proposed release gates and test evidence.
+- [Controls and verification strategy](security/controls-and-verification.md) — implemented Package 1 controls and remaining release gates.
 
 ## Payments
 
@@ -31,6 +31,7 @@ See the [ADR index](decisions/README.md). ADRs 0005–0011 capture accepted prov
 - [Phase 1 post-mortem](postmortems/phase-1-canonical-models.md)
 - [Phase 2 post-mortem](postmortems/phase-2-transactional-business-logic.md)
 - [Phase 2 execution log](phase-2-execution-log.md)
+- [Phase 3 Package 1 post-mortem](postmortems/phase-3-package-1-security-foundation.md)
 - [Post-mortem index](postmortems/README.md)
 
 Official Paystack sources were reviewed on 2026-11-19 and linked from the provider comparison. Provider features, prices, account settings and terms can change.

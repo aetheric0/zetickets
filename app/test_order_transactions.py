@@ -16,10 +16,10 @@ from app.services.orders import (
     IdempotencyConflict,
     InsufficientInventory,
     InventoryNeedsReconciliation,
-    VerifiedPaymentFailure,
+    PaymentVerificationUnavailable,
     cancel_pending_order,
     expire_due_orders,
-    record_verified_payment_failure,
+    record_payment_failure,
     reserve_tickets,
 )
 
@@ -216,57 +216,37 @@ async def test_expiry_cleanup_releases_only_due_reservations_once():
 
 
 @pytest.mark.asyncio
-async def test_verified_payment_failure_releases_hold_and_is_idempotent():
+async def test_payment_failure_without_provider_verification_fails_closed():
     ticket_type = make_ticket_type(reserved=2)
     order = make_order(ticket_type)
-    evidence = VerifiedPaymentFailure("verified-decline-123")
-    session = FakeSession([order, ticket_type])
+    session = FakeSession()
 
-    result = await record_verified_payment_failure(session, order_id=order.id, evidence=evidence)
+    with pytest.raises(PaymentVerificationUnavailable):
+        await record_payment_failure(session, order_id=order.id)
 
-    assert result.status is OrderStatus.PAYMENT_FAILED
-    assert result.payment_evidence_reference == evidence.evidence_reference
-    assert ticket_type.quantity_reserved == 0
-    assert all(ticket.status is TicketStatus.CANCELLED for ticket in order.tickets)
-    assert session.commits == 1
-
-    retry_session = FakeSession([order])
-    await record_verified_payment_failure(retry_session, order_id=order.id, evidence=evidence)
-    assert retry_session.commits == 1
-    assert ticket_type.quantity_reserved == 0
+    assert order.status is OrderStatus.PENDING
+    assert order.payment_evidence_reference is None
+    assert ticket_type.quantity_reserved == 2
+    assert all(ticket.status is TicketStatus.RESERVED for ticket in order.tickets)
+    assert session.statements == []
+    assert session.commits == 0 and session.rollbacks == 0
 
 
 @pytest.mark.asyncio
-async def test_payment_failure_after_expiry_keeps_expired_state():
-    now = datetime(2030, 1, 1, tzinfo=UTC)
+async def test_forged_payment_evidence_is_not_accepted_by_order_service():
     ticket_type = make_ticket_type(reserved=1)
-    order = make_order(ticket_type, quantity=1, expires_at=now - timedelta(seconds=1))
-    session = FakeSession([order, ticket_type])
+    order = make_order(ticket_type, quantity=1)
+    session = FakeSession()
 
-    result = await record_verified_payment_failure(
-        session, order_id=order.id, evidence=VerifiedPaymentFailure("decline-late"), now=now
-    )
+    with pytest.raises(TypeError):
+        await record_payment_failure(session, order_id=order.id, evidence=object())
 
-    assert result.status is OrderStatus.EXPIRED
-    assert ticket_type.quantity_reserved == 0
-    assert order.tickets[0].status is TicketStatus.EXPIRED
-
-
-@pytest.mark.asyncio
-async def test_late_failure_evidence_on_expired_order_is_recorded_without_second_release():
-    ticket_type = make_ticket_type(reserved=0)
-    order = make_order(ticket_type, quantity=1, status=OrderStatus.EXPIRED)
-    session = FakeSession([order])
-
-    result = await record_verified_payment_failure(
-        session, order_id=order.id, evidence=VerifiedPaymentFailure("late-decline")
-    )
-
-    assert result.status is OrderStatus.EXPIRED
-    assert result.payment_evidence_reference == "late-decline"
-    assert ticket_type.quantity_reserved == 0
-    assert len(session.statements) == 1
-    assert session.commits == 1
+    assert order.status is OrderStatus.PENDING
+    assert order.payment_evidence_reference is None
+    assert ticket_type.quantity_reserved == 1
+    assert all(ticket.status is TicketStatus.RESERVED for ticket in order.tickets)
+    assert session.statements == []
+    assert session.commits == 0 and session.rollbacks == 0
 
 
 @pytest.mark.asyncio
@@ -340,7 +320,16 @@ def test_database_constraints_cover_idempotency_and_inventory_invariants():
 
 @pytest.mark.asyncio
 async def test_checkout_never_completes_without_payment_evidence():
+    ticket_type = make_ticket_type(reserved=1)
+    order = make_order(ticket_type, quantity=1)
+    session = FakeSession()
+
     with pytest.raises(HTTPException) as raised:
-        await checkout_order(uuid4(), object(), object())
+        await checkout_order(order.id, session, object())
+
     assert raised.value.status_code == 409
     assert "trusted payment evidence" in raised.value.detail
+    assert order.status is OrderStatus.PENDING
+    assert ticket_type.quantity_reserved == 1
+    assert all(ticket.status is TicketStatus.RESERVED for ticket in order.tickets)
+    assert session.statements == [] and session.commits == 0

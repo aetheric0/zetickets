@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import secrets
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -59,15 +58,10 @@ class IdempotencyConflict(OrderOperationError):
     status_code = 409
 
 
-@dataclass(frozen=True, slots=True)
-class VerifiedPaymentFailure:
-    """Provider-neutral receipt created only after a trusted verifier runs.
+class PaymentVerificationUnavailable(OrderOperationError):
+    """No trusted provider verifier is configured for payment transitions."""
 
-    No HTTP request accepts this object. Phase 3 must provide the verification
-    adapter before any request path can construct or submit one.
-    """
-
-    evidence_reference: str
+    status_code = 503
 
 
 async def _one_or_none(session: AsyncSession, statement):
@@ -260,64 +254,23 @@ async def cancel_pending_order(
         raise
 
 
-async def record_verified_payment_failure(
+async def record_payment_failure(
     session: AsyncSession,
     *,
     order_id: UUID,
-    evidence: VerifiedPaymentFailure,
-    now: datetime | None = None,
-) -> Order:
-    """Record a trusted failed-payment result and release a pending hold once."""
-    try:
-        reference = evidence.evidence_reference.strip()
-        if not reference or len(reference) > 255:
-            raise InvalidReservationRequest("Payment evidence reference must contain 1 to 255 characters")
-        order = await _lock_owned_order(session, order_id=order_id, user_id=None)
-        if order.payment_evidence_reference == reference and order.status in (
-            OrderStatus.CANCELLED,
-            OrderStatus.PAYMENT_FAILED,
-            OrderStatus.EXPIRED,
-        ):
-            await session.commit()
-            return order
-        if order.status in (OrderStatus.CANCELLED, OrderStatus.EXPIRED):
-            if order.payment_evidence_reference is not None:
-                raise InvalidOrderTransition("A different payment result is already recorded for this order")
-            order.payment_evidence_reference = reference
-            await session.commit()
-            return order
-        if order.status != OrderStatus.PENDING:
-            raise InvalidOrderTransition(f"Cannot apply payment failure to order in status {order.status}")
-        if order.ticket_type_id is None:
-            raise InventoryNeedsReconciliation("Order has no recorded ticket type")
+) -> None:
+    """Fail closed until a trusted verification flow is implemented.
 
-        ticket_type = await _lock_inventory(session, order.ticket_type_id)
-        quantity = _assert_reserved_quantity(order, ticket_type)
-        order.payment_evidence_reference = reference
-        current_time = now or datetime.now(UTC)
-        if current_time.tzinfo is None:
-            current_time = current_time.replace(tzinfo=UTC)
-        expires_at = order.expires_at
-        if expires_at is not None and expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
-
-        ticket_type.quantity_reserved -= quantity
-        if expires_at is not None and current_time >= expires_at:
-            _transition_pending(order, OrderStatus.EXPIRED)
-            ticket_status = TicketStatus.EXPIRED
-        else:
-            if order.status != OrderStatus.PENDING:
-                raise InvalidOrderTransition(f"Cannot fail order in status {order.status}")
-            order.status = OrderStatus.PAYMENT_FAILED
-            ticket_status = TicketStatus.CANCELLED
-        for ticket in order.tickets:
-            if ticket.status == TicketStatus.RESERVED:
-                ticket.status = ticket_status
-        await session.commit()
-        return order
-    except Exception:
-        await session.rollback()
-        raise
+    This operation intentionally accepts no provider status or evidence object.
+    A future payment orchestration service must perform provider verification
+    itself before adding a transactionally safe state transition. Phase 2's
+    verified-failure path is disabled here; reservation expiry and user-driven
+    cancellation remain available and continue to release inventory safely.
+    """
+    del session, order_id
+    raise PaymentVerificationUnavailable(
+        "Payment failure cannot be recorded until trusted verification is configured"
+    )
 
 
 async def expire_due_orders(

@@ -4,15 +4,17 @@ This is an implementation and release specification, not a statement that contro
 
 ## Security foundation
 
-- Resolve the confirmed JWT mismatch: [`app/core/security.py`](../../app/core/security.py) signs with `JWT_SECRET`; [`app/core/deps.py`](../../app/core/deps.py) verifies with `SECRET_KEY`; both currently have empty defaults in [`config.py`](../../app/core/config.py). Use one explicitly validated key/configuration for signing and verification, fail closed when absent/weak, allowlist algorithm and define rotation. Do not change auth code in this planning milestone.
-- Tests must show a token signed with configured key validates, wrong-key/algorithm/expired/malformed tokens reject, and missing/weak secret prevents unsafe operation.
+- **Implemented in Phase 3 Package 1:** [`app/core/config.py`](../../app/core/config.py) requires `JWT_SECRET` as a `SecretStr` of at least 32 characters and a non-empty `ALGORITHM`; settings validation fails if either is absent/invalid. [`app/core/security.py`](../../app/core/security.py) and [`app/core/deps.py`](../../app/core/deps.py) use that same configured key/algorithm to sign and verify. JWT failures log a generic message without token/error details. Deployments that set only legacy `SECRET_KEY` must configure `JWT_SECRET`; no automatic secret migration is performed.
+- **Still required:** document and implement key rotation, policy for existing sessions, and stronger ownership/role authorization. Never weaken signature verification or expose config values.
+- Tests must show application-created token validation, wrong-key/algorithm/expired/malformed claim rejection, and missing/weak config rejection without exposing the generated test value.
 - Enforce authentication, ownership and least-privilege role authorization in service operations, including every order read, payment lookup, refund, reconciliation, payout and organizer balance view. Never trust identifiers alone.
 - Restrict role mutation and administrative financial actions; audit actor, reason, object/reference and outcome. Consider dual control for payout/refund execution after risk/commercial thresholds are defined.
 
 ## Provider evidence boundary
 
 - Persist a payment attempt before external I/O. The trusted service invokes the Paystack adapter verifier and validates merchant account, environment, unique reference, order association, exact integer amount and KES currency against immutable snapshots.
-- Do not accept browser status, arbitrary JSON or a constructible `VerifiedPaymentFailure`/similar Python dataclass as provider proof. That existing Phase 2 object is not independently authenticated.
+- **Implemented in Phase 3 Package 1:** removed the constructible `VerifiedPaymentFailure` value and the order-service operation that trusted it to mark payment failure and release inventory. The remaining `record_payment_failure` operation accepts no status/evidence payload and raises `PaymentVerificationUnavailable` without reading or mutating the session. Checkout continues to reject success. User cancellation and expiry continue to release inventory through their existing transactional paths.
+- **Deferred to the Paystack adapter/orchestration packages:** server-side provider verification and authenticated event intake followed by an application-owned transaction that records verified evidence and performs a permitted transition. Browser status, arbitrary JSON and Python types alone are never proof.
 - Verify Paystack webhook signature over raw bytes according to current docs (timestamp, all key-ID signatures during rotation, freshness window, HMAC-SHA512 and constant-time compare). Store/deduplicate authenticated receipts; webhook only queues/query-verifies. Treat valid signature as origin/integrity, not correctness of amount/order.
 - Record API timeout as ambiguous until reference-based verification; never repeat charge/refund blindly.
 

@@ -8,10 +8,10 @@ The roadmap establishes the engineering foundations before product expansion. It
 
 - **Phase 1 — Complete at repository level.** Model/schema tests pass. The complete migration chain was also exercised on a fresh disposable PostgreSQL 18.6 database during Phase 2 verification; compatibility with any pre-existing application database remains unverified.
 - **Phase 2 — Complete at repository/test-environment level.** Transactional reservation behavior and PostgreSQL integration checks passed on the fresh disposable PostgreSQL 18.6 environment. Existing database migration compatibility and production runtime operations are not established.
-- **Phase 3 — Architecture/security planning documented; implementation not started.** Provider choice, currency/settlement, refund authority and late-payment policy require owner approval. This review does not authorize provider or application code.
+- **Phase 3 — In progress.** Architecture direction is accepted; Security Foundation Package 1 implements validated, consistent JWT configuration and disables caller-asserted payment failure transitions. Provider verification, authentication/authorization hardening, payment persistence, webhooks and reconciliation remain incomplete. See the [package 1 post-mortem](postmortems/phase-3-package-1-security-foundation.md) and [implementation plan](phase-3-implementation-plan.md).
 - **Phases 4 and 5 — Not started.**
 
-For Phase 3 proposals, provider evidence and approval gates, see the [payment architecture](architecture/payment-architecture.md), [provider comparison](payments/provider-comparison.md), [threat model](security/threat-model.md), and [proposed ADRs](decisions/README.md).
+For Phase 3 architecture, provider evidence and approval gates, see the [payment architecture](architecture/payment-architecture.md), [provider comparison](payments/provider-comparison.md), [threat model](security/threat-model.md), and [accepted ADRs](decisions/README.md).
 
 ## Phase 1 — Canonical data model and schemas
 
@@ -62,7 +62,7 @@ ACID properties, transaction isolation, row-level locking, race conditions, opti
 
 ## Phase 3 — Security and payments
 
-**Planning status (2026-11-19):** Architecture direction is accepted in ADRs 0005–0011: Paystack first, KES only initially with future currency extensibility, platform collection with separate organizer settlement, and refund of verified late success when reservation/inventory is invalid. Phase 3 implementation has not started. Account-specific Paystack readiness and commercial terms remain unverified/undefined. See the [Phase 3 implementation plan](phase-3-implementation-plan.md).
+**Architecture direction (2026-11-19):** ADRs 0005–0011 accept Paystack first, KES only initially with future currency extensibility, platform collection with separate organizer settlement, and refund of verified late success when reservation/inventory is invalid. Security Foundation Package 1 is implemented; provider integration, payment state persistence, full authorization, webhooks and reconciliation remain unimplemented. Account-specific Paystack readiness and commercial terms remain unverified/undefined. See the [Phase 3 implementation plan](phase-3-implementation-plan.md).
 
 **Scope**
 - Authentication and authorization.

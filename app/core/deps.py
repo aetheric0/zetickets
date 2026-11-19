@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import decode_access_token
 from app.models.user import User as UserModel
 from app.schemas.token import TokenPayload
 from app.services.db import AsyncSessionLocal, async_engine
@@ -60,16 +61,12 @@ async def get_current_user(
     )
 
     try:
-        payload = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
+        payload = decode_access_token(token)
         token_data = TokenPayload(**payload)
         if token_data.sub is None:
             raise credentials_exception
-    except (jwt.PyJWTError, ValidationError) as e:
-        logger.warning(f"JWT Validation failed: {e}")
+    except (jwt.PyJWTError, ValidationError):
+        logger.warning("JWT validation failed")
         raise credentials_exception
 
     # Retrieve user ORM instance from database
