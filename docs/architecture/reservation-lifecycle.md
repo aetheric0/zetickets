@@ -24,6 +24,6 @@ The former `VerifiedPaymentFailure` dataclass and the service operation that acc
 
 ## Payment lifecycle is not yet modeled
 
-There is no payment attempt record, provider account/mode, provider transaction reference, webhook event log or refund state. `payment_reference` is a local order field; it is not currently bound to a provider. A single evidence string cannot express multiple attempts, pending verification, refunds or conflicting outcomes.
+The Phase 3 Package 2 schema now defines payment attempts, provider/account/environment references, webhook receipt/authentication/processing records, refunds, reconciliation observations and a unique fulfillment claim. These are persistence structures only: `payment_reference` is still not bound to a provider by runtime code, and there is no payment service, verification path, webhook route or refund execution. No successful-payment transition is currently available.
 
-See the [payment architecture](payment-architecture.md), [lifecycle/reconciliation requirements](../payments/lifecycle-and-reconciliation.md) and [Phase 3 execution plan](../phase-3-implementation-plan.md). Provider adapter, payment persistence, successful/failed provider transitions, refunds and reconciliation remain deferred.
+See the [payment architecture](payment-architecture.md), [lifecycle/reconciliation requirements](../payments/lifecycle-and-reconciliation.md) and [Phase 3 execution plan](../phase-3-implementation-plan.md). Provider adapter, verified payment transitions, webhook processing, refund execution and reconciliation behavior remain deferred.

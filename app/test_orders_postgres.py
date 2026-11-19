@@ -39,7 +39,7 @@ EXPECTED_DATABASE = "zetickets_phase2_test"
 EXPECTED_HOST = "127.0.0.1"
 EXPECTED_PORT = 55439
 EXPECTED_USERNAME = "zetickets_test_owner"
-EXPECTED_HEAD = "a2d4e6f8091b"
+EXPECTED_HEAD = "c7e2a4b19d60"
 
 
 def explicit_test_url() -> str:

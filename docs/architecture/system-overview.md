@@ -29,5 +29,5 @@ Alembic revisions are under [`alembic/versions/`](../../alembic/versions/). The 
 - The v1 API router is not mounted in the FastAPI application.
 - JWT creation and validation use the same required `JWT_SECRET` (`SecretStr`, minimum 32 characters) and non-empty `ALGORITHM`; settings validation fails at startup when either is absent/invalid. Existing deployments using only `SECRET_KEY` must configure `JWT_SECRET` explicitly. Broader authorization/ownership hardening remains. See [`app/core/config.py`](../../app/core/config.py), [`app/core/security.py`](../../app/core/security.py) and [`app/core/deps.py`](../../app/core/deps.py).
 - Endpoint modules contain authorization and response-handling defects that need security/API phases, not changes in this documentation-only milestone.
-- There is no payment-attempt persistence model or webhook/reconciliation infrastructure.
+- Package 2 adds payment-attempt, webhook receipt, refund, reconciliation and fulfillment-claim persistence. No provider integration, payment transition service, webhook route, reconciliation worker or payment API is implemented.
 - Docker Compose describes PostgreSQL and API services but not Redis. The API command runs migrations at container startup, and the database service uses a persistent named volume. Neither compose behavior nor a production deployment has been verified here.

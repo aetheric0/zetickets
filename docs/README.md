@@ -7,7 +7,7 @@ This index links to the canonical engineering documents. The roadmap controls ph
 - [System overview](architecture/system-overview.md) — runtime composition and current route registration.
 - [Domain model](architecture/domain-model.md) — ORM entities, relationships and recorded uncertainty.
 - [Reservation lifecycle](architecture/reservation-lifecycle.md) — current Phase 2 transaction behavior.
-- [Payment architecture](architecture/payment-architecture.md) — accepted provider-neutral design; implementation not started.
+- [Payment architecture](architecture/payment-architecture.md) — accepted provider-neutral design and Package 2 persistence boundary; provider behavior remains unimplemented.
 
 ## Security
 
@@ -32,6 +32,7 @@ See the [ADR index](decisions/README.md). ADRs 0005–0011 capture accepted prov
 - [Phase 2 post-mortem](postmortems/phase-2-transactional-business-logic.md)
 - [Phase 2 execution log](phase-2-execution-log.md)
 - [Phase 3 Package 1 post-mortem](postmortems/phase-3-package-1-security-foundation.md)
+- [Phase 3 Package 2 post-mortem](postmortems/phase-3-package-2-payment-data-model.md)
 - [Post-mortem index](postmortems/README.md)
 
 Official Paystack sources were reviewed on 2026-11-19 and linked from the provider comparison. Provider features, prices, account settings and terms can change.

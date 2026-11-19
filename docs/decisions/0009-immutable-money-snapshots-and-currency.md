@@ -30,6 +30,6 @@ Reject amount/currency tampering; mismatch enters reconciliation and cannot fulf
 
 Current [`Order`](../../app/models/order.py), [`TicketType`](../../app/models/ticket.py), [`reservation service`](../../app/services/orders.py); Paystack [Verify Payments](https://paystack.com/docs/payments/verify-payments/) returns transaction amount/currency for comparison. Public [Kenya pricing](https://paystack.com/ke/pricing) does not determine this account's terms.
 
-## Open implementation details
+## Implementation refinement from Package 2
 
-Define authoritative ticket price unit, conversion helpers, precision bounds and storage migration from current `Numeric` fields. Historical values remain nullable until evidence-backed reconciliation. Future currency activation requires explicit product/commercial policy.
+New `PaymentAttempt` and `Refund` records store positive integer minor-unit amounts and explicit KES snapshots; database checks reject other initial payment/refund currencies and triggers prevent snapshot mutation. Reconciliation observations permit explicit ISO currency values so mismatches can be recorded. Legacy `Order` totals/prices remain `Numeric`/`Decimal`, and no conversion or checkout operation is implemented. Define the authoritative ticket price unit, conversion, bounds and evidence-backed migration before creating payment attempts from legacy orders. Historical values remain nullable until reconciled. Future currency activation requires explicit product/commercial policy.

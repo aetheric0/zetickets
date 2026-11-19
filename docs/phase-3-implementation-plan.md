@@ -1,6 +1,6 @@
 # Phase 3 implementation plan: security and payments
 
-**Status:** Package 1 is implemented and recorded in the [Package 1 post-mortem](postmortems/phase-3-package-1-security-foundation.md); Packages 2–7 remain planned. Phase 3 follows completed Phase 1/2; no Phase 4 router rollout or Phase 5 deployment work starts automatically. Approved direction: Paystack first, KES initial only, provider-independent internals, platform collection/separate organizer settlement, and refund verified late success when reservation/inventory is invalid.
+**Status:** Packages 1 and 2 are implemented and recorded in their [post-mortems](postmortems/README.md); Packages 3–7 remain planned. Package 2's forward migration, metadata parity, Alembic check and safe empty downgrade/re-upgrade passed on a fresh disposable PostgreSQL 18.6 cluster. Phase 3 follows completed Phase 1/2; no Phase 4 router rollout or Phase 5 deployment work starts automatically. Approved direction: Paystack first, KES initial only, provider-independent internals, platform collection/separate organizer settlement, and refund verified late success when reservation/inventory is invalid.
 
 ## Work package dependency map
 
@@ -20,7 +20,7 @@ WP2 and WP3 may be designed in parallel once WP1 defines trust boundaries, but t
 - **Scope:** Resolve `JWT_SECRET`/`SECRET_KEY` mismatch; fail-closed secret validation; authorization/ownership matrix; replace caller-constructible payment evidence trust with service-owned provider verification; define audit events and secret handling.
 - **Likely components:** `app/core/config.py`, `app/core/security.py`, `app/core/deps.py`, auth/authorization dependencies, `app/services/orders.py` payment boundary, security tests and configuration docs.
 - **Dependencies:** None; prerequisite to payment endpoints/adapter exposure.
-- **Database implications:** No payment schema yet; audit persistence may be scoped here or in WP2.
+- **Database implications:** Package 1 introduced no payment schema. Package 2 now provides the payment-attempt/evidence/refund/reconciliation persistence foundation; authorization audit persistence and transition auditing remain to be designed.
 - **Security:** One validated JWT key/algorithm; deny-by-default roles; no caller-asserted status; secrets external and redacted.
 - **Tests:** Matching JWT key succeeds; missing/weak/mismatched key fails closed; expiry/algorithm rejection; ownership and role matrix; attempts to construct/inject fake evidence cannot mark paid.
 - **Acceptance:** Signing/verifying configuration is consistent, protected operations enforce ownership/authorization, evidence trust is rooted in server-side adapter verification, actions are auditable.
@@ -28,13 +28,15 @@ WP2 and WP3 may be designed in parallel once WP1 defines trust boundaries, but t
 
 ## WP2 — Payment data model
 
+**Package 2 execution detail:** The persistence design comprises `PaymentAttempt`, `PaymentFulfillment`, `WebhookEvent`, `Refund` and `ReconciliationRecord`. Native enums store explicit Python enum values. Attempts/refunds use positive integer minor units and explicit KES; financial snapshots and receipt/observation facts are database-immutable. Provider reference, event deduplication, refund idempotency, reconciliation idempotency and one-fulfillment-per-order boundaries are constrained in PostgreSQL. Raw payloads are not retained. Refund rows permit multiple records without an invented aggregate refund policy. No payment service, provider call, route, organizer ledger or payout is in scope. Executed checks are recorded in the [Package 2 post-mortem](postmortems/phase-3-package-2-payment-data-model.md).
+
 - **Scope:** Payment attempts, provider/account/environment-scoped references, KES minor-unit and ISO currency snapshots, append-only webhook/evidence inbox, refund attempts, reconciliation runs/findings and idempotency constraints.
 - **Likely components:** `app/models/`, `app/models/enums.py`, `app/schemas/`, Alembic forward revisions, ORM/schema compatibility and migration tests.
 - **Dependencies:** WP1 trust boundary and accepted ADRs; coordinate adapter contract with WP3.
 - **Database implications:** Forward-only additive schema, nullable-safe history; do not fabricate old quantity/money/currency/expiry. PostgreSQL enum/constraint/index changes require fresh disposable PostgreSQL migration tests and existing-database compatibility remains separately unknown.
 - **Security:** Minimize payload retention; no credentials/card data; protect merchant IDs and event metadata; restrict financial record access.
 - **Tests:** Model/migration parity, uniqueness by provider/account/environment, legal enum transitions, nullable historical record reads, append-only evidence invariants and PostgreSQL constraints.
-- **Acceptance:** A fresh DB can migrate; attempts/events/refunds/reconciliation are representable and idempotency constraints are enforced; old unknowns remain unknown.
+- **Acceptance:** A fresh disposable PostgreSQL database migrates through the full chain; metadata parity, enums, constraints, triggers, idempotency and rollback behavior are tested; attempts/events/refunds/reconciliation are representable; old unknowns remain unknown. Existing application database compatibility remains unverified absent an authorized populated-database rehearsal.
 - **Rollback:** Forward-only repair migration; disable new payment writes and preserve records. No destructive downgrade or data rewrite against existing databases.
 
 ## WP3 — Paystack provider adapter

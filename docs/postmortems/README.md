@@ -7,3 +7,4 @@ Use descriptive filenames, for example `phase-1-canonical-models.md`.
 Include the observed defects, root causes, impact, correction rationale, affected files, exact verification evidence, migration implications, residual risks and Git checkpoint.
 
 - [Phase 3 Package 1: Security Foundation](phase-3-package-1-security-foundation.md)
+- [Phase 3 Package 2: Payment Data Model](phase-3-package-2-payment-data-model.md)

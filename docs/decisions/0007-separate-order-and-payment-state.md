@@ -5,7 +5,7 @@
 
 ## Context
 
-The current `OrderStatus` includes historical pending/success/failed/completed/cancelled/expired/payment-failed values, while provider outcomes can be delayed or arrive after reservation expiry. Payment attempts, refunds and verified payment records are not currently modeled.
+The current `OrderStatus` includes historical pending/success/failed/completed/cancelled/expired/payment-failed values, while provider outcomes can be delayed or arrive after reservation expiry. Package 2 adds separate payment-attempt, fulfillment-claim, refund, webhook receipt and reconciliation persistence; no state-transition service exists yet.
 
 ## Decision
 
@@ -28,6 +28,6 @@ Client status and webhook payload alone cannot change payment state. Reconciliat
 
 Current [`Order`](../../app/models/order.py), [`OrderStatus`](../../app/models/enums.py) and [`orders service`](../../app/services/orders.py); Paystack [Verify Payments](https://paystack.com/docs/payments/verify-payments/) recommends server-side verification and exact transaction checks.
 
-## Open implementation details
+## Implementation refinement from Package 2
 
-Choose concrete enum labels, concurrency locks, uniqueness boundaries, transaction isolation and raw evidence retention when designing the payment schema/service. Preserve this separation.
+The schema defines explicit native payment/refund/webhook/reconciliation enum labels, provider/account/environment uniqueness, idempotency keys, audit immutability and one fulfillment claim per order. The claim is tied to a `SUCCEEDED` attempt for the same order but is not proof of provider authentication. Transaction locking, state-transition authorization, webhook retention duration, cumulative refund policy and raw evidence needs remain service/operations decisions. Preserve this separation.

@@ -2,7 +2,7 @@
 
 Zetickets is an early-stage backend for event, ticket-tier, reservation and order management. The project is being hardened in five engineering phases before payments or production deployment are introduced.
 
-> **Status:** Phases 1 and 2 have repository-level and isolated PostgreSQL verification. Phase 3 architecture and security planning is documented; payment integration has not started. The runtime currently exposes only `GET /health`. This project is not production-ready.
+> **Status:** Phases 1 and 2 have repository-level and isolated PostgreSQL verification. Phase 3 Package 1 security foundation and Package 2 payment persistence are implemented and verified on a fresh disposable PostgreSQL 18.6 cluster. Provider integration and payment behavior have not started. The runtime currently exposes only `GET /health`. This project is not production-ready.
 
 ## Feature status
 
@@ -11,7 +11,8 @@ Zetickets is an early-stage backend for event, ticket-tier, reservation and orde
 | Canonical SQLAlchemy models, Pydantic compatibility and Alembic revisions | Implemented; migration chain exercised on a fresh disposable PostgreSQL 18.6 database. Existing-database upgrade compatibility remains unverified. |
 | Transactional reservation, persisted quantity/expiry, inventory locking, cancellation, expiry and idempotency | Implemented in the order service and verified by database-independent tests plus a disposable PostgreSQL integration suite. |
 | User authentication and user/event/ticket/order endpoint modules | Code exists, but routes are not mounted in the application. JWT signing/verification now share validated `JWT_SECRET` configuration; broader authorization defects remain. |
-| Payment-attempt persistence, payment provider, payment verification, webhook handling, refunds and reconciliation | Planned. No provider code or payment-success transition exists. |
+| Payment-attempt, webhook receipt, refund and reconciliation persistence | Implemented in Package 2 and verified on a fresh disposable PostgreSQL cluster; no provider code, trusted payment transition or ticket fulfillment from payment exists. |
+| Paystack integration, provider verification, webhook endpoint, refund execution, reconciliation worker and organizer payouts | Planned for later Phase 3 packages; none implemented. |
 | Deployment, CI and production operations | Deferred and unverified. |
 
 ## Technology stack
@@ -61,6 +62,8 @@ The running application is defined in [`app/main.py`](app/main.py), which curren
 - A **TicketType** records a price, total capacity, reserved/sold counters and activity state.
 - An **Order** belongs to a user, optionally references a ticket type for legacy compatibility, and can have multiple **Ticket** rows.
 - Each **Ticket** references an order and ticket type.
+- Each order can have multiple **PaymentAttempt** records. A separate **PaymentFulfillment** claim can associate only one successful attempt with an order; payment persistence does not itself issue tickets or prove provider verification.
+- **WebhookEvent** records retain a digest and bounded receipt/processing metadata, not raw webhook payloads or credentials. **Refund** records and **ReconciliationRecord** observations remain associated with their payment attempt; reconciliation may also refer to a refund.
 
 New orders snapshot quantity, unit price and expiry. Historical quantities, prices, currencies and expiry that were never recorded remain unknown; the migrations do not manufacture those values. Current money fields use `Decimal`/`Numeric`, but reservation code leaves order currency null. The accepted payment policy is KES-only for initial transactions; checkout remains unavailable until each order has an authoritative immutable amount/currency snapshot in the required representation.
 
@@ -84,7 +87,7 @@ Expiry cleanup is a callable bounded service using `SKIP LOCKED`; no scheduler i
 
 The accepted architecture separates order/reservation, payment attempt, ticket fulfillment and refund lifecycles behind a provider-neutral adapter. Paystack is the initial provider; KES is the only initially enabled currency, with future currency extensibility. The platform collects/reconciles customer payments and pays organizers separately. A verified late success after expiry/ineligible inventory is refunded; no ticket is issued without valid inventory. Webhooks are authenticated signals followed by server-side transaction verification; they are not standalone proof. Payment success is not proof that funds cleared or an organizer was paid.
 
-These are architecture decisions only: payment persistence, Paystack integration, refund handling, organizer accounting and reconciliation are not implemented. Account access, live eligibility, enabled channels, settlement configuration, fees, refund capabilities and merchant terms are not independently verified for Zetickets. Daraja is a future option and is outside initial scope. Commission, tax, reserves, fee allocation and payout timing remain undefined.
+Payment persistence is implemented as schema only. Paystack integration, provider verification, refund execution, reconciliation behavior, organizer accounting and payouts are not implemented. Account access, live eligibility, enabled channels, settlement configuration, fees, refund capabilities and merchant terms are not independently verified for Zetickets. Daraja is a future option and is outside initial scope. Commission, tax, reserves, fee allocation and payout timing remain undefined.
 
 Read the [provider comparison](docs/payments/provider-comparison.md), [payment architecture](docs/architecture/payment-architecture.md), [payment lifecycle](docs/payments/lifecycle-and-reconciliation.md), [Phase 3 implementation plan](docs/phase-3-implementation-plan.md) and [ADRs](docs/decisions/README.md).
 
@@ -101,7 +104,7 @@ JWT creation and validation now use the same canonical `JWT_SECRET`, which is re
 
 ## Database and migrations
 
-PostgreSQL is the authoritative transaction and migration target. The migration chain contains the preserved initial schema and forward-only Phase 1/2 revisions. Fresh-chain PostgreSQL 18.6 verification passed; upgrades against a populated, existing or production database are not verified.
+PostgreSQL is the authoritative transaction and migration target. The migration chain preserves the initial and Phase 1/2 revisions and adds forward revision `c7e2a4b19d60` for payment persistence. Fresh-chain PostgreSQL 18.6 upgrade, metadata parity, Alembic check and empty downgrade/re-upgrade passed; upgrades against a populated, existing or production database are not verified.
 
 For local development, first configure a dedicated disposable PostgreSQL database and the variables below. Review the target identity and migration plan before running:
 
@@ -182,7 +185,7 @@ The only registered application route is `GET /health`. FastAPI exposes its gene
 
 - Phase 1: complete; see [post-mortem](docs/postmortems/phase-1-canonical-models.md).
 - Phase 2: complete on an isolated PostgreSQL test environment; existing-database compatibility remains unverified. See [post-mortem](docs/postmortems/phase-2-transactional-business-logic.md).
-- Phase 3: architecture/security direction accepted and implementation plan documented; implementation is not started. Account-specific readiness and commercial terms remain open.
+- Phase 3: architecture/security direction accepted; Packages 1 and 2 are implemented. Provider integration, orchestration, authorization hardening and subsequent packages remain. Account-specific readiness and commercial terms are open.
 - Phases 4–5: not started.
 
 The [engineering roadmap](docs/engineering-roadmap.md) is authoritative. Use the [documentation index](docs/README.md) to find architecture, payments, security and ADR material.

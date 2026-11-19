@@ -24,6 +24,7 @@ from app.models.enums import OrderStatus
 from .base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.payment import PaymentAttempt, PaymentFulfillment
     from app.models.ticket import Ticket
     from app.models.ticket import TicketType
     from app.models.user import User
@@ -77,4 +78,10 @@ class Order(Base, TimestampMixin):
     user: Mapped[User] = relationship(back_populates="orders")
     ticket_type: Mapped[TicketType | None] = relationship(back_populates="orders")
     tickets: Mapped[list[Ticket]] = relationship(back_populates="order")
+    payment_attempts: Mapped[list[PaymentAttempt]] = relationship(
+        "PaymentAttempt", back_populates="order", passive_deletes=True
+    )
+    payment_fulfillment: Mapped[PaymentFulfillment | None] = relationship(
+        "PaymentFulfillment", back_populates="order", uselist=False, passive_deletes=True
+    )
 

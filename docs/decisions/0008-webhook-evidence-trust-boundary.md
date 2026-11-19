@@ -30,6 +30,6 @@ Use raw bytes, HMAC verification with constant-time compare and provider freshne
 
 Paystack [Webhooks](https://paystack.com/docs/payments/webhooks/) and [Verify Payments](https://paystack.com/docs/payments/verify-payments/), reviewed 2026-11-19. Current webhook docs describe timestamped `Paystack-Signature`, multiple key-ID signatures, HMAC-SHA512 over timestamp plus raw body and a documented timestamp window; implementation must recheck current docs.
 
-## Open implementation details
+## Implementation refinement from Package 2
 
-Define durable acknowledgement, event identity/dedupe, key rotation overlap, data retention and incident procedures as implementation work. No payment behavior is implemented by this ADR.
+The persistence schema stores a SHA-256 digest and bounded provider/event identifiers, not raw webhook bodies or credentials. Receipt facts are immutable; authentication and processing are separate state fields; rejected receipts cannot be upgraded to authenticated. Database presence or an authenticated label still does not prove an event was authenticated—the future verifier must set that state only after cryptographic verification and independently verify the transaction. Event retention duration, key rotation overlap, acknowledgement policy and incident procedures remain implementation/operations work. No payment behavior is implemented by the schema.
