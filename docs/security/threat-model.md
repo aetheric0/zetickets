@@ -92,9 +92,9 @@ Current source findings: `app/main.py` only mounts `/health`; the v1 router is n
 - **Asset:** scarce inventory, payment funds and customer entitlement.
 - **Attack vector:** customer completes a delayed M-PESA/card flow after the Phase 2 ten-minute reservation expires and inventory is released.
 - **Impact:** overselling if order is reactivated; customer loss if money is retained without ticket/refund.
-- **Prevention:** retain payment success as a distinct financial fact; do not silently reopen reservation or issue ticket; lock/revalidate inventory only under an owner-approved policy; otherwise enter explicit review/refund state.
-- **Detection/recovery:** alert and reconcile late-success queue; support/refund workflow with status tracking.
-- **Tests:** payment success after expiry, concurrent expiry and webhook, inventory already re-sold, late event repeated.
+- **Prevention:** owner-approved rule requires independent Paystack verification, persistence of evidence, reservation/inventory check, no ticket when expired/ineligible, and one idempotent refund followed through confirmation. Never silently reopen/reacquire inventory.
+- **Detection/recovery:** reconcile late-success/refund queue; escalate delayed, failed or attention-required refund; keep payment successful and refund status separate.
+- **Tests:** verified success after expiry, concurrent expiry and verification, inventory already re-sold, late event repeated, refund request timeout/retry and delayed confirmation.
 
 ### T11 — Success after cancellation
 
@@ -156,3 +156,21 @@ Current source findings: `app/main.py` only mounts `/health`; the v1 router is n
 - The reported Paystack account status was not independently inspected.
 - Exact Daraja callback authenticity and retry characteristics must be confirmed with current account-specific documentation.
 - Threat controls are not implemented or verified by this documentation milestone. Security tests belong to Phase 3/4.
+
+### T17 — Organizer liability or payout manipulation
+
+- **Asset:** organizer payable balances, platform funds and accounting history.
+- **Attack vector:** unauthorized ledger adjustment, duplicate payout, payout to substituted destination, or marking an initiated transfer paid.
+- **Impact:** platform loss, organizer under/overpayment, fraud and unreconciled liabilities.
+- **Prevention:** append-only balanced per-currency accounting entries with unique source references; separate provider collection records from organizer ledger/payout; least-privilege payout creation/approval; protected destination changes; idempotent payout references; only verified payout confirmation reduces payable. Commercial rules must be explicit and versioned.
+- **Detection/recovery:** reconcile provider settlement and transfer statements to ledger/payout records; alert on duplicate references, unbalanced entries and aged pending payouts; audited manual resolution.
+- **Tests:** duplicate payout attempts, unauthorized payout, destination change audit, fabricated confirmation rejected, missing/duplicate settlement lines, ledger imbalance and replay-safe reconciliation.
+
+### T18 — Incomplete or misleading financial reconciliation
+
+- **Asset:** payment, refund, platform revenue and organizer liabilities.
+- **Attack vector:** missing webhook, delayed provider settlement, ignored fee/refund, dropped reconciliation run or manual overwrite of discrepancy.
+- **Impact:** false available balances, unrefunded customer funds, inaccurate reporting or concealed loss.
+- **Prevention:** durable run records, bounded repeatable reconciliation, source-linked immutable entries, explicit unresolved state and escalation; distinguish transaction success from cleared settlement.
+- **Detection/recovery:** age/value alerts, daily comparison to provider records/statements, recorded findings and controlled adjustments with actor/reason.
+- **Tests:** missing events, duplicate/reordered provider lines, repeated runs, delayed settlement, fee/refund variance and inability to overwrite a discrepancy silently.

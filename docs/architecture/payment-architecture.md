@@ -1,76 +1,52 @@
-# Phase 3 payment architecture proposal
+# Payment architecture
 
-**Status: Proposed; no provider or financial policy is approved by this document.** No payment code is implemented by this review.
+**Status:** accepted architecture direction; application implementation has not started. Owner-approved decisions: Paystack is the initial provider, KES is the initial transaction currency, the platform collects/reconciles and pays organizers separately, and verified late success after reservation expiry is refunded without ticket fulfillment.
 
-## Goals
+## Boundaries
 
-- Keep orders and fulfillment provider-independent.
-- Keep provider credentials and provider-specific API semantics inside separate adapters.
-- Base fulfillment on persisted, server-verified payment evidence rather than client assertions or a Python type.
-- Make retries, duplicate webhook delivery, missing callbacks and ambiguous network outcomes recoverable.
-- Preserve auditability without retaining unnecessary cardholder or customer data.
+Keep four lifecycles distinct: order/reservation (inventory hold and expiry), payment attempt (provider transaction outcome), ticket fulfillment (entitlement issuance), and refund (return of customer funds). A successful payment is a financial fact; it is not by itself permission to issue tickets. Existing runtime currently exposes only `GET /health`; these are design requirements, not available endpoints or implemented capabilities.
 
-## Proposed components
+The application service will use a provider-neutral interface with operations to initialize a payment, verify a transaction, authenticate and normalize a webhook, initiate a refund, verify refund status, and reconcile transactions. A Paystack adapter is first. Paystack payloads, API responses, provider references, signature formats, native statuses and metadata remain inside that adapter. Daraja is a possible future adapter and is outside initial implementation scope.
 
-```text
-API checkout operation
-  -> Order/payment application service
-  -> PaymentAttempt persistence (one order can have multiple attempts)
-  -> Provider interface
-      ├── Paystack adapter (candidate first)
-      └── Daraja adapter (independent future option)
+Persist a local payment attempt before calling a provider. It associates one order with a provider/account/environment, an application-generated idempotency reference, provider transaction reference, immutable amount/currency snapshot, normalized state, and timestamps. Multiple attempts may exist historically, but do not allow another unresolved attempt while an earlier one has an ambiguous outcome. Enforce provider-reference uniqueness within provider account and environment. Provider response timeouts are unknown outcomes until verified/reconciled.
 
-Provider webhook -> raw-body authentication -> durable inbox/evidence
-                 -> provider-side verification/reconciliation
-                 -> idempotent payment transition
-                 -> order fulfillment transaction
-```
+Use an append-only event/evidence inbox and separate refund records. Authenticate webhook bytes, persist/deduplicate the receipt, then independently query the provider. A Python object, caller status, redirect parameter or webhook payload is not authenticated evidence merely because of its type or shape. The trusted orchestration service calls the adapter verifier and only persists a verified result after matching merchant account, environment, reference, amount and currency. The Phase 2 `VerifiedPaymentFailure` value is constructible and is not a trusted proof boundary.
 
-The API should create a local payment attempt before initiating an external charge. Persisting first gives the callback and reconciliation jobs a stable local association. A provider timeout after sending a request is ambiguous: mark the attempt as initiation-unknown/pending verification and query or reconcile it before creating another active attempt.
+## State and transaction rules
 
-## Persistence proposal
+The canonical states and transition sources are defined in [payment lifecycle and reconciliation](../payments/lifecycle-and-reconciliation.md). Provider initialization acknowledgements can establish pending/action-required; only server-side provider verification may establish success or terminal failure. Webhooks prompt verification; scheduled reconciliation resolves missing or conflicting evidence. Fulfillment locks and checks the order/reservation and inventory, then commits payment evidence, eligible order transition, tickets and inventory atomically and idempotently.
 
-1. **PaymentAttempt**: foreign key to order; provider and merchant-account/environment identifiers; local attempt/idempotency reference; provider transaction reference; amount and currency snapshot; normalized status; timestamps; minimal channel metadata. Uniqueness must be scoped to provider account and environment. One order may have sequential attempts, but avoid concurrent unresolved charge attempts until the owner approves a different policy.
-2. **PaymentEvent / evidence record**: append-only receipt of authenticated/observed provider events and verification decisions. Store stable provider event identity when available, normalized event type/status, provider reference, payload digest, received/verified timestamps and outcome. Retain full raw payload only if required, encrypted and under a documented retention policy. Never store card PAN/CVV or provider credentials.
-3. **Refund record or refund attempts**: model provider refund references, amount/currency and pending/processing/failed/complete state if refunds are brought into scope. Do not represent a refund request as a completed refund.
+For verified success after expiry/cancellation or unavailable inventory: persist the verified transaction, do not issue tickets or reacquire inventory implicitly, initiate one idempotent refund, persist its reference/status, and reconcile until provider-confirmed completion or manual escalation. A refund request is never a completed refund.
 
-These names and fields are a proposal, not a schema commitment. A migration and retention design belong to an authorized Phase 3 implementation plan.
+## Money and organizer accounting
 
-## Provider-neutral interface
+Initial policy is KES only. Store money as integer minor units plus explicit ISO currency code; never use binary floating point. At the provider boundary use the documented KES exponent and compare exact verified amount and currency to immutable server-derived order/payment snapshots. Historical unknown money remains unknown; no guessed currency, price, quantity, fee or expiry may be backfilled. Currency design must permit additional explicit currency codes later without enabling them now.
 
-The application service should depend on narrow operations such as `initialize(attempt)`, `verify(reference)`, `parse_and_authenticate_webhook(raw_request)`, and `request_refund(verified_payment, amount)`. Provider adapters translate their native states, currencies, references, callback behavior, and API errors. The application must not infer that a provider result means order fulfillment is safe; the service checks order ownership/association, attempt state, expected amount/currency and reservation state inside a transaction.
+Track gross customer payment, provider fee, refund, platform revenue and organizer liability as separate auditable accounting movements. Payment-provider transactions are not the organizer ledger. Maintain a traceable per-currency journal and reconcile it against provider transactions, settlement statements and payout records. Provider success does not establish cleared platform funds. Do not increase available organizer payable until the applicable funds are confirmed cleared and policy adjustments are known; do not reduce liability/mark paid until payout confirmation is independently recorded. Commission, taxes, reserves, fee allocation and payout timing remain commercial decisions.
 
-Do not persist a generic provider status as the sole source of truth. Preserve provider-native references/status metadata needed for support and reconciliation while exposing a small normalized payment state machine to the domain.
+Accounting invariants before implementation:
 
-## State separation
+- Every verified capture maps to exactly one local payment attempt and one immutable order snapshot; amount and currency agree.
+- Each financial movement is recorded once with a unique source reference; journal entries balance per currency.
+- Fees, refunds, platform revenue and organizer payable are explicit components, never hidden in a net amount.
+- Refunds reference the original capture; cumulative refund cannot exceed refundable captured value under provider-confirmed status.
+- Pending/un-cleared receipts are not represented as withdrawable organizer funds.
+- A payout request is not a completed payout; only verified provider confirmation reduces payable.
+- Reconciliation is repeatable and leaves a recorded discrepancy instead of silently editing history.
 
-The order state answers “may this order be fulfilled/cancelled/expired?” The payment state answers “what has the provider reported and what has this system independently verified?” These are related but not identical. For example, a payment may be verified successful after its order reservation has expired; that payment must not silently reopen the reservation or issue tickets.
+## Security and operations
 
-Suggested normalized payment states for review: `CREATED`, `INITIATION_UNKNOWN`, `PENDING_CUSTOMER`, `PENDING_PROVIDER`, `VERIFY_REQUIRED`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`, `REFUND_PENDING`, `REFUNDED`, and `REVIEW_REQUIRED`. The final set and allowed transitions need review against chosen provider(s) and business policies.
+Resolve the JWT signing/verification mismatch (`JWT_SECRET` versus `SECRET_KEY`) before payment-protected operations: use one required validated signing/verification key, fail closed when absent, and test matching key success plus wrong-key/expiry rejection. Never expose provider credentials. Separate sandbox/live credentials and account identities; rotate secrets without logging values. Prefer provider-hosted checkout to avoid handling card data. Authorization must enforce order ownership and narrowly scoped audited administrative refund/reconciliation/payout permissions.
 
-## Monetary representation
+Paystack documentation currently describes Kenya card and M-PESA channels, server-side transaction verification, webhook signatures and refunds. Account activation, enabled channels, live eligibility, settlement, merchant terms and refund capability must be checked for Zetickets before production. See [provider comparison](../payments/provider-comparison.md) and [security controls](../security/controls-and-verification.md).
 
-Current models use `Decimal` and `Numeric(10,2)` but do not define currency. Do not initiate a payment while the expected order currency is null. Keep values in exact decimal/integer form; never use binary floating point. At the provider boundary convert to the provider's documented minor units with explicit currency exponent handling. Compare verified currency and amount to the immutable attempt snapshot, not to mutable current ticket price. Owner approval is required for the supported currency set, authoritative price currency and whether ticket tiers may be multi-currency.
+## Persistence direction and open implementation details
 
-## Fulfillment transaction boundary
+Likely records include `PaymentAttempt`, immutable provider event/evidence receipts, `RefundAttempt`, reconciliation runs/findings, balanced organizer ledger entries and payout records. These are design names, not a schema. Retention/encryption of raw webhook bodies, exact state enum labels, fee recognition, clearing evidence source, payout provider, commercial terms and operator dual-control thresholds require implementation design or owner/commercial input. No payment models, migrations, provider clients, routes or workers are implemented by this specification.
 
-Only after independent verification should a transaction lock the order, its active attempt and the ticket-type inventory, validate expected amount/currency/reference and current order eligibility, then perform a single idempotent order/payment/ticket/inventory transition. Store the verified result and all fulfillment writes atomically. Repeated verification/webhook deliveries must return the already-applied outcome and must not issue tickets or change counters twice.
+## References
 
-If payment succeeded but the order is cancelled/expired or another attempt already fulfilled it, record the successful payment as such and route it to an explicit exception/refund path. Do not re-reserve scarce inventory or silently mark it fulfilled.
-
-## Open owner decisions
-
-- Approve Paystack as the first adapter, subject to dashboard and merchant agreement checks, or choose Daraja first.
-- Decide supported currency, displayed ticket currency and settlement currency policy.
-- Decide merchant of record, organizer split/subaccount model, fee allocation, refund authority and chargeback responsibility. Existing `OrganizerProfile` Paystack fields do not settle these questions.
-- Decide whether one unresolved payment attempt per order is mandatory and when a replacement attempt may start.
-- Decide whether a late verified success is automatically refunded, held for manual review, or can be fulfilled only after explicit inventory revalidation.
-- Approve refund authorization, partial refunds, and customer/support operations.
-- Set payment-evidence/raw-webhook retention, privacy and audit requirements.
-
-## Related records
-
-- [Provider comparison](../payments/provider-comparison.md)
-- [Payment lifecycle and reconciliation](../payments/lifecycle-and-reconciliation.md)
-- [Threat model](../security/threat-model.md)
-- [ADRs 0005–0010](../decisions/README.md)
+- [ADRs 0005–0011](../decisions/README.md)
+- [Paystack Verify Payments](https://paystack.com/docs/payments/verify-payments/)
+- [Paystack Webhooks](https://paystack.com/docs/payments/webhooks/)
+- [Paystack Refunds](https://paystack.com/docs/payments/refunds/)

@@ -1,37 +1,35 @@
-# ADR 0009: Immutable purchase amount snapshots and explicit currency
+# ADR 0009: Immutable money snapshots and KES-first currency policy
 
-- **Status:** Proposed technical direction; currency policy requires owner approval
+- **Status:** Accepted
 - **Date:** 2026-11-19
 
 ## Context
 
-The current order snapshots decimal `unit_price` and `total_amount`; `currency` is nullable and reservation code sets it to `None`. Ticket-type price has no currency. Paystack APIs accept provider currency and minor-unit amount; advertised currencies/settlements do not decide Zetickets' product pricing policy.
+Orders contain decimal price snapshots and nullable currency; historical currency/price facts may be unknown. Ticket prices can change after reservation. Payment APIs require explicit amount and currency.
 
 ## Decision
 
-Propose that each payment attempt capture immutable expected amount and ISO currency derived server-side from an explicit order pricing snapshot. Never start checkout with unknown currency. Use exact decimal/integer arithmetic, never floats; convert to provider subunits using explicit currency exponent rules and compare verified amount/currency to the attempt snapshot. Do not update old rows with guessed currencies.
-
-This ADR does not yet select KES-only, KES plus USD, or tier-specific currency. Owner approval is required for allowed currencies, ticket display currency, FX/pricing source and settlement currency. Keep existing fields until a schema decision is approved.
+Initial payment transactions use KES only. Design currency fields with explicit ISO codes so additional currencies can be supported later, but do not enable them now. Store financial amounts as integer minor units, use exact arithmetic only, and snapshot expected order/payment amount and currency immutably before provider initialization. Verify provider amount and currency exactly against that snapshot. Derive all amounts server-side; reject client overrides and unknown currency. Do not guess or backfill historical values.
 
 ## Alternatives considered
 
-- Default all rows to KES: fabricates a financial fact and is rejected.
-- Use binary float: risks rounding and mismatch errors.
-- Snapshot only current tier price at verification: permits later price edits to change an existing purchase.
-- Immediately replace decimals with integer minor units: may be viable, but needs a broader migration/API contract review; no change is made here.
+- Default historical nulls to KES: fabricates financial facts and is rejected.
+- Floating-point arithmetic: risks rounding and mismatches.
+- Re-read current ticket price at payment: allows later edits to alter an existing purchase.
+- Enable multiple currencies initially: outside the approved first release.
 
 ## Consequences
 
-Checkout remains blocked for orders with unknown currency. Payment amount, currency, fee/settlement amount and FX must not be conflated. Legacy NULLs require evidence-backed reconciliation only.
+Checkout remains unavailable for orders lacking an authoritative amount/currency snapshot. Conversion at the provider boundary must follow explicit currency exponents. Fees, FX, gross/net and settlement amounts are separate values; no implicit conversion or float is allowed.
 
 ## Security and operations
 
-Reject client-supplied amount/currency overrides. Verify provider account, environment, expected amount and currency. Audit mismatches; refund or resolve under approved policy.
+Reject amount/currency tampering; mismatch enters reconciliation and cannot fulfill. Record provider fees and settlement evidence separately. A successful payment is not proof that funds are cleared.
 
 ## Evidence and references
 
-Source: [`Order`](../../app/models/order.py), [`TicketType`](../../app/models/ticket.py), [`reservation service`](../../app/services/orders.py). Paystack [API currency reference](https://paystack.com/docs/api/) describes currency subunits; [Kenya pricing](https://paystack.com/ke/pricing) lists public KES/USD options. Accessed 2026-11-18.
+Current [`Order`](../../app/models/order.py), [`TicketType`](../../app/models/ticket.py), [`reservation service`](../../app/services/orders.py); Paystack [Verify Payments](https://paystack.com/docs/payments/verify-payments/) returns transaction amount/currency for comparison. Public [Kenya pricing](https://paystack.com/ke/pricing) does not determine this account's terms.
 
-## Open questions
+## Open implementation details
 
-Owner approval is mandatory for currency, pricing, FX and settlement policy before payment initialization is implemented.
+Define authoritative ticket price unit, conversion helpers, precision bounds and storage migration from current `Numeric` fields. Historical values remain nullable until evidence-backed reconciliation. Future currency activation requires explicit product/commercial policy.

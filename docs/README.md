@@ -7,7 +7,7 @@ This index links to the canonical engineering documents. The roadmap controls ph
 - [System overview](architecture/system-overview.md) — runtime composition and current route registration.
 - [Domain model](architecture/domain-model.md) — ORM entities, relationships and recorded uncertainty.
 - [Reservation lifecycle](architecture/reservation-lifecycle.md) — current Phase 2 transaction behavior.
-- [Payment architecture proposal](architecture/payment-architecture.md) — provider-neutral design and approval questions.
+- [Payment architecture](architecture/payment-architecture.md) — accepted provider-neutral design; implementation not started.
 
 ## Security
 
@@ -17,11 +17,12 @@ This index links to the canonical engineering documents. The roadmap controls ph
 ## Payments
 
 - [Provider comparison](payments/provider-comparison.md) — Paystack and Daraja comparison based on official documentation.
-- [Payment lifecycle and reconciliation](payments/lifecycle-and-reconciliation.md) — proposed lifecycle, webhook and exception handling.
+- [Payment lifecycle and reconciliation](payments/lifecycle-and-reconciliation.md) — accepted states, trust, refund and accounting requirements.
+- [Phase 3 implementation plan](phase-3-implementation-plan.md) — bounded work packages, dependencies, tests and rollback.
 
 ## Decisions
 
-See the [ADR index](decisions/README.md). ADRs 0005–0010 are proposals; owner approval is required for provider sequencing and financial policies.
+See the [ADR index](decisions/README.md). ADRs 0005–0011 capture accepted provider, currency, lifecycle, late-refund and platform-settlement direction; account-specific and commercial details remain open.
 
 ## Delivery records
 
@@ -32,4 +33,4 @@ See the [ADR index](decisions/README.md). ADRs 0005–0010 are proposals; owner 
 - [Phase 2 execution log](phase-2-execution-log.md)
 - [Post-mortem index](postmortems/README.md)
 
-Provider documentation references are linked from the provider comparison and ADRs. They were reviewed on 2026-11-18; provider features, pricing and policies can change.
+Official Paystack sources were reviewed on 2026-11-19 and linked from the provider comparison. Provider features, prices, account settings and terms can change.

@@ -1,38 +1,34 @@
-# ADR 0006: Paystack as first provider candidate
+# ADR 0006: Paystack as the initial payment provider
 
-- **Status:** Proposed recommendation; project-owner approval required
+- **Status:** Accepted
 - **Date:** 2026-11-19
 
 ## Context
 
-The owner reports that the project has a verified Paystack account and API access. Paystack's public documentation describes Kenya M-PESA and card support. Daraja provides direct M-PESA integration but not cards. This review did not inspect the Paystack dashboard, credentials, production mode, merchant eligibility, channel activation or settlement setup.
+The owner reports a verified Paystack account and API access from an earlier project. That does not establish Zetickets merchant eligibility, live status, enabled payment channels, settlement configuration or applicable commercial terms. Paystack official docs describe card channels across markets and Kenya M-PESA support; account and dashboard settings still govern actual availability.
 
 ## Decision
 
-Recommend Paystack as the first adapter candidate, conditional on owner approval and dashboard/agreement checks. Keep the application provider-neutral and retain direct Safaricom Daraja as an independent option. This ADR does not authorize implementation or finalize provider choice.
+Paystack is the first provider implementation target, subject to account-specific readiness checks before production. Initial scope is KES transactions only. Build a provider-neutral internal boundary. Daraja remains a future independent provider option, not part of the initial implementation.
 
 ## Alternatives considered
 
-- Daraja first: appropriate if direct M-PESA control, account ownership or economics take priority; does not cover cards and adds direct onboarding/reconciliation work.
-- Both simultaneously: broad coverage but doubles provider-specific test, support, callback and accounting burden before one flow is stable.
-- Defer all providers: avoids financial assumptions but blocks the payment milestone.
+- Daraja first: direct M-PESA path but does not supply the planned card channels.
+- Both providers simultaneously: expands testing and operational burden before one flow is stable.
+- No provider: conflicts with the owner-approved Phase 3 direction.
 
 ## Consequences
 
-Paystack could cover Kenyan M-PESA and cards through one integration, subject to live account enablement and merchant terms. It creates vendor fees, settlement and refund dependencies. Daraja remains possible but adds a separate direct integration.
+One adapter may cover Kenya M-PESA and supported card channels, but Zetickets depends on Paystack behavior, account settings, fees, verification, refunds and settlement. No public price or settlement statement is a guaranteed account quote.
 
 ## Security and operations
 
-Use server-side initialization/verification and authenticated webhooks; keep test/live keys separate. Confirm supported event signatures, account activation, callback configuration, fees, settlement destinations, refunds and dispute operations before production use.
+Use server-side initialization/verification; authenticate webhooks; reconcile missing/late events; separate test/live keys and accounts. Before launch verify in Paystack dashboard/agreement: Kenyan M-PESA/card enablement, live eligibility, merchant entity, webhook signing setup, settlement destination/currency, fees, refund eligibility/status behavior, disputes and limits. Never inspect or expose keys in documentation.
 
 ## Evidence and references
 
-- [Paystack Kenya payment channels](https://paystack.com/docs/payments/payment-channels/) and [Kenya pricing](https://paystack.com/ke/pricing).
-- [Daraja Developer Portal](https://developer.safaricom.co.ke/) and [Transaction Status API](https://developer.safaricom.co.ke/apis/TransactionStatus).
-- Project owner account status is reported, not independently verified. Sources reviewed 2026-11-18.
+Owner account status is reported, not independently inspected. Official [Payment Channels](https://paystack.com/docs/payments/payment-channels/), [Verify Payments](https://paystack.com/docs/payments/verify-payments/), [Webhooks](https://paystack.com/docs/payments/webhooks/), [Kenya pricing](https://paystack.com/ke/pricing) and [Kenya terms](https://paystack.com/ke/terms) reviewed 2026-11-19. Public prices and general terms do not establish this merchant's contractual charges or eligibility.
 
-## Owner approval questions
+## Open account/commercial checks
 
-1. Is Paystack approved as Phase 3's first provider?
-2. Does the account have live Kenyan M-PESA, local/international card channels and the intended settlement currencies enabled?
-3. Do signed merchant terms and payout/refund operations meet the product's requirements?
+Confirm eligible channels, live onboarding, account and settlement currency/destination, fees and taxes, refund and chargeback terms, transfer capabilities and merchant agreement. These checks gate launch, not the accepted Paystack-first direction.

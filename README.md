@@ -62,7 +62,7 @@ The running application is defined in [`app/main.py`](app/main.py), which curren
 - An **Order** belongs to a user, optionally references a ticket type for legacy compatibility, and can have multiple **Ticket** rows.
 - Each **Ticket** references an order and ticket type.
 
-New orders snapshot quantity, unit price and expiry. Historical quantities, prices, currencies and expiry that were never recorded remain unknown; the migrations do not manufacture those values. Current money fields use `Decimal`/`Numeric`, but there is no authoritative currency policy and reservation code leaves order currency null. Payment initialization must wait until currency is explicitly resolved.
+New orders snapshot quantity, unit price and expiry. Historical quantities, prices, currencies and expiry that were never recorded remain unknown; the migrations do not manufacture those values. Current money fields use `Decimal`/`Numeric`, but reservation code leaves order currency null. The accepted payment policy is KES-only for initial transactions; checkout remains unavailable until each order has an authoritative immutable amount/currency snapshot in the required representation.
 
 See [domain model](docs/architecture/domain-model.md) for nullability and relationships.
 
@@ -82,11 +82,11 @@ Expiry cleanup is a callable bounded service using `SKIP LOCKED`; no scheduler i
 
 ## Payment architecture direction
 
-The proposed design separates order fulfillment from payment attempts and uses provider adapters behind a provider-neutral service boundary. Provider webhook events are authenticated and deduplicated, then independently verified against provider state, reference, merchant account, amount and currency before fulfillment. Payment success after an expired/cancelled reservation is recorded as a financial fact and cannot silently reopen inventory.
+The accepted architecture separates order/reservation, payment attempt, ticket fulfillment and refund lifecycles behind a provider-neutral adapter. Paystack is the initial provider; KES is the only initially enabled currency, with future currency extensibility. The platform collects/reconciles customer payments and pays organizers separately. A verified late success after expiry/ineligible inventory is refunded; no ticket is issued without valid inventory. Webhooks are authenticated signals followed by server-side transaction verification; they are not standalone proof. Payment success is not proof that funds cleared or an organizer was paid.
 
-**Provider selection is not approved.** A Paystack-first adapter is recommended for owner review because the project owner reports an existing verified account and Paystack documents Kenyan M-PESA and card channels. Account access, live eligibility, channel activation, fees, settlement, refunds and terms have not been independently checked. Direct Safaricom Daraja remains a separate M-PESA option. Currency, merchant-of-record, organizer split, refund authority, multiple attempts and late-success policy require owner approval.
+These are architecture decisions only: payment persistence, Paystack integration, refund handling, organizer accounting and reconciliation are not implemented. Account access, live eligibility, enabled channels, settlement configuration, fees, refund capabilities and merchant terms are not independently verified for Zetickets. Daraja is a future option and is outside initial scope. Commission, tax, reserves, fee allocation and payout timing remain undefined.
 
-Read the [provider comparison](docs/payments/provider-comparison.md), [payment architecture proposal](docs/architecture/payment-architecture.md), [payment lifecycle proposal](docs/payments/lifecycle-and-reconciliation.md) and [Phase 3 ADRs](docs/decisions/README.md).
+Read the [provider comparison](docs/payments/provider-comparison.md), [payment architecture](docs/architecture/payment-architecture.md), [payment lifecycle](docs/payments/lifecycle-and-reconciliation.md), [Phase 3 implementation plan](docs/phase-3-implementation-plan.md) and [ADRs](docs/decisions/README.md).
 
 ## Security principles and current limitations
 
@@ -183,7 +183,7 @@ The only registered application route is `GET /health`. FastAPI exposes its gene
 
 - Phase 1: complete; see [post-mortem](docs/postmortems/phase-1-canonical-models.md).
 - Phase 2: complete on an isolated PostgreSQL test environment; existing-database compatibility remains unverified. See [post-mortem](docs/postmortems/phase-2-transactional-business-logic.md).
-- Phase 3: architecture/security review documented; implementation is not started and owner decisions remain open.
+- Phase 3: architecture/security direction accepted and implementation plan documented; implementation is not started. Account-specific readiness and commercial terms remain open.
 - Phases 4–5: not started.
 
 The [engineering roadmap](docs/engineering-roadmap.md) is authoritative. Use the [documentation index](docs/README.md) to find architecture, payments, security and ADR material.

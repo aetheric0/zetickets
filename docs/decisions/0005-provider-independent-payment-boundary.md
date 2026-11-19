@@ -1,34 +1,34 @@
 # ADR 0005: Provider-independent payment boundary
 
-- **Status:** Proposed; owner approval required before Phase 3 schema implementation
+- **Status:** Accepted
 - **Date:** 2026-11-19
 
 ## Context
 
-The current domain has no payment-attempt entity or provider adapter. The order model contains one local payment reference and one optional evidence string. Paystack and direct Safaricom Daraja have different channels, references, verification paths and callback behaviors.
+Paystack is the owner-approved initial provider. Future providers have different channel flows, references, callback formats, verification and refunds. Current orders do not have a payment-attempt model.
 
 ## Decision
 
-Propose a canonical internal payment-attempt/evidence model and narrow provider adapter interface. Keep provider-specific credentials, references and payload normalization within adapters. Orders and fulfillment must not depend on provider-native status values.
+Use canonical internal payment attempts/evidence and a narrow provider adapter for initialization, transaction verification, webhook authentication/normalization, refund initiation/status verification and transaction reconciliation. Implement Paystack first; keep provider-specific semantics inside its adapter. Daraja remains a future option outside the initial implementation scope.
 
 ## Alternatives considered
 
-- Put provider-specific fields and branching directly on `Order`: simpler initially but couples order state and migration history to a vendor.
-- Implement one provider with no boundary: faster for a single flow but makes second-provider support and deterministic tests harder.
-- Build a multi-provider routing framework now: premature; the proposal needs only a small adapter contract.
+- Provider-specific state and branching on `Order`: couples order history to vendor behavior.
+- Implement Paystack without a boundary: smaller first patch, but makes domain verification and future adapter replacement harder to test.
+- Multi-provider routing framework: unnecessary before a second provider is approved.
 
 ## Consequences
 
-An order may have multiple sequential attempts, and each provider transaction is independently identifiable. Adding persistence, retention and reconciliation logic is required before payment code. Provider portability reduces domain coupling but does not remove settlement, refund, pricing or reconciliation migration costs.
+An order can have multiple distinct attempts; unresolved attempts require verify-before-retry. Provider transaction references are unique within provider account/environment. This requires new persistence and reconciliation; the current code does not implement it.
 
 ## Security and operations
 
-Credentials stay external; incoming events are authenticated and independently verified. Persist only necessary provider metadata and evidence. Reconciliation and support procedures are required.
+Only provider verification performed by the trusted application service can produce a persisted verified result. Internal Python dataclasses and caller-provided statuses are not proof. Credentials and provider formats remain in adapters; sandbox/live accounts are distinct.
 
 ## Evidence and references
 
-Source review: [`Order`](../../app/models/order.py), [`OrderStatus`](../../app/models/enums.py), [`orders service`](../../app/services/orders.py). Provider behavior differs in [Paystack transaction/webhook docs](https://paystack.com/docs/payments/verify-payments/) and [Safaricom Daraja](https://developer.safaricom.co.ke/).
+Source review: [`Order`](../../app/models/order.py), [`OrderStatus`](../../app/models/enums.py), [`orders service`](../../app/services/orders.py). Official [Paystack Verify Payments](https://paystack.com/docs/payments/verify-payments/) and [webhooks](https://paystack.com/docs/payments/webhooks/) reviewed 2026-11-19.
 
-## Open questions
+## Open implementation questions
 
-Approve this structure and the persistence/retention boundaries before migrations are designed.
+Exact fields, event/raw-payload retention, provider idempotency guarantees, and evidence retention/encryption require design before schema implementation. They do not reopen the accepted provider-independent boundary.

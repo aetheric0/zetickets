@@ -1,39 +1,34 @@
-# ADR 0010: Late provider success after reservation expiry
+# ADR 0010: Refund verified late payments after reservation expiry
 
-- **Status:** Proposed safety default; business/refund policy requires owner approval
+- **Status:** Accepted
 - **Date:** 2026-11-19
 
 ## Context
 
-Phase 2 expires pending orders after ten minutes and releases reserved inventory. Providers can settle asynchronously; Paystack M-PESA prompts are asynchronous and Daraja exposes callback/status query flows. A delayed success may arrive after inventory is released or re-sold.
+Phase 2 expires reservations and releases inventory. An asynchronous M-PESA/card result can succeed after that inventory is released or sold. Owner has explicitly selected a refund for late success and prohibited ticket issuance without valid inventory.
 
 ## Decision
 
-Propose recording verified late payment as a payment fact, marking the order/payment for manual exception review, and never silently reopening the order or issuing a ticket without an explicit, atomic inventory eligibility decision. A refund is a separate, authorized, asynchronous operation and is not implied by marking an order failed/expired.
-
-This is a conservative default proposal only. The owner must decide automatic refund versus manual review versus conditional fulfillment, service-level timing, customer communication and refund/chargeback responsibility.
+For a late reported success: independently verify it with Paystack; persist the verified transaction evidence; inspect reservation status and inventory eligibility; do not issue a ticket if reservation expired/cancelled or valid inventory is unavailable; initiate one idempotent refund; persist the refund attempt and provider reference; reconcile until confirmed refunded or escalated for manual handling. Never reopen/reacquire inventory implicitly. A refund request is not a completed refund.
 
 ## Alternatives considered
 
-- Automatically re-open and issue: risks overselling and bypassing current event inventory rules.
-- Ignore late provider success: leaves customer funds unresolved.
-- Automatically refund every late success: may be unavailable, delayed, fee-bearing or require manual details depending on provider/account/channel.
+- Automatically reopen and fulfill: risks oversell and violates approved direction.
+- Ignore verified success: leaves customer funds unresolved.
+- Hold funds without a defined process: no customer resolution and poor auditability.
 
 ## Consequences
 
-Requires a late-success queue, reconciliation visibility and operational owner. Refund state must remain separate and be verified until provider confirms completion. No schema or behavior change is made in this review.
+Requires durable payment evidence, refund lifecycle, idempotent references, reconciliation and an operator exception queue. Refund failure does not erase successful payment; delayed confirmation remains pending/reconciliation-required.
 
 ## Security and operations
 
-Only independently verified provider evidence enters the exception queue. Refund initiation requires authorization, an idempotency reference and audit record. Reconcile refund and settlement results; avoid disclosing sensitive payment data in support tools.
+Provider verification must match account/environment/reference/order/amount/currency. Refund operations require authorization and auditable actor/reason; ambiguous timeouts are queried before retry. Do not claim the refund complete until provider confirmation.
 
 ## Evidence and references
 
-- Phase 2 [`expiry service`](../../app/services/orders.py) releases inventory for due orders.
-- Paystack [M-PESA channel flow](https://paystack.com/docs/payments/payment-channels/) is asynchronous; [refund guide](https://paystack.com/docs/payments/refunds/) documents pending/processing/needs-attention/failed/processed states.
-- Safaricom [Transaction Status API](https://developer.safaricom.co.ke/apis/TransactionStatus) provides asynchronous status query for delayed callbacks.
-- Reviewed 2026-11-18.
+Phase 2 [`expiry service`](../../app/services/orders.py) releases inventory for due orders. Paystack [Verify Payments](https://paystack.com/docs/payments/verify-payments/) and [Refunds](https://paystack.com/docs/payments/refunds/) document server verification and asynchronous refund processing (reviewed 2026-11-19).
 
-## Open questions
+## Open implementation details
 
-Owner approval required for the actual late-success, refund, customer-remediation and inventory policy.
+Account/channel refund eligibility, customer communication, escalation ownership and refund processing SLAs require operational/account-specific definition. These do not change the approved late-success outcome.

@@ -62,6 +62,8 @@ ACID properties, transaction isolation, row-level locking, race conditions, opti
 
 ## Phase 3 — Security and payments
 
+**Planning status (2026-11-19):** Architecture direction is accepted in ADRs 0005–0011: Paystack first, KES only initially with future currency extensibility, platform collection with separate organizer settlement, and refund of verified late success when reservation/inventory is invalid. Phase 3 implementation has not started. Account-specific Paystack readiness and commercial terms remain unverified/undefined. See the [Phase 3 implementation plan](phase-3-implementation-plan.md).
+
 **Scope**
 - Authentication and authorization.
 - Password hashing and token lifecycle.

@@ -1,74 +1,92 @@
-# Payment lifecycle and reconciliation proposal
+# Payment lifecycle and reconciliation
 
-**Proposal only.** Provider sequencing, money policy, late-payment behavior and refund authority require owner approval. No payment integration is present today.
+**Status:** accepted requirements; no payment integration is implemented. Initial provider is Paystack, initial currency KES, platform collection with separate organizer settlement, and late verified payment after reservation expiry is refunded without issuing tickets.
 
-## Candidate lifecycle
+## Four independent lifecycles
 
-```text
-Order reservation PENDING
-  -> persist PaymentAttempt CREATED
-  -> call selected provider
-     -> accepted/pending customer action
-     -> definitive initialization failure
-     -> ambiguous timeout (INITIATION_UNKNOWN; verify before retry)
-  -> authenticated webhook and/or scheduled/manual reconciliation
-  -> independently verify provider result and match attempt/order/amount/currency
-     -> payment SUCCEEDED + eligible order fulfilled atomically
-     -> payment FAILED/EXPIRED; reservation release follows order policy
-     -> conflict/late success -> REVIEW_REQUIRED; never silently fulfill
-```
+1. **Order/reservation:** pending inventory hold, fulfilled, cancelled or expired. Phase 2 expiry releases inventory.
+2. **Payment attempt:** provider-side transaction outcome and our independently verified result.
+3. **Ticket fulfillment:** entitlement issuance only after verified payment and a transactionally valid reservation/inventory check.
+4. **Refund:** separate asynchronous return of captured funds; a successful payment remains historically successful even if refunded.
 
-Order state and payment state should be separate. Payment status is a statement about an attempt and evidence; order status is a statement about inventory reservation and fulfillment. A provider event may arrive late or out of order, and a successful payment can exist even if an order is no longer fulfillable.
+Do not collapse these statuses onto one `OrderStatus`. Payment success does not imply order fulfillment or organizer settlement.
 
-## Initialization and association
+## Normalized payment state machine
 
-- Create a local payment attempt with immutable order ID, amount, currency, provider mode/account and unique local reference before sending the provider request.
-- Bind the provider transaction reference to that attempt under a uniqueness scope that includes provider account and test/live environment.
-- Derive amount/currency from a persisted immutable purchase snapshot; never accept amount/currency from the browser/webhook as authoritative.
-- If provider initialization times out ambiguously, query/verify by local/provider reference and reconcile before permitting a second unresolved charge attempt.
-- Persist the provider response needed for support without storing credentials, card numbers or unnecessary personal data.
+Suggested canonical states (exact enum/storage labels are implementation decisions):
 
-## Webhook inbox and trust
+| State | Meaning | Allowed next states |
+|---|---|---|
+| `INITIALIZING` | Local attempt persisted; provider request not yet resolved | `PENDING`, `FAILED`, `INITIATION_UNKNOWN` |
+| `PENDING` | Provider accepted/awaiting customer or provider outcome | `SUCCEEDED`, `FAILED`, `EXPIRED`, `RECONCILIATION_REQUIRED` |
+| `INITIATION_UNKNOWN` | Request timed out or response lost; may exist at provider | `PENDING`, `SUCCEEDED`, `FAILED`, `RECONCILIATION_REQUIRED` after verification |
+| `SUCCEEDED` | Server-side verification confirms exact transaction and snapshot | remains `SUCCEEDED`; separate refund lifecycle may begin |
+| `FAILED` | Provider verification confirms terminal failure | terminal; a new attempt is a distinct record |
+| `EXPIRED` | Provider confirms terminal expiry/abandonment or applicable expiry policy is verified | terminal; late success contradicting this requires reconciliation |
+| `RECONCILIATION_REQUIRED` | Missing, inconsistent or ambiguous provider result | verified `PENDING`, `SUCCEEDED`, `FAILED`, `EXPIRED`; otherwise remains unresolved |
 
-1. Capture the exact raw request bytes before JSON parsing when the provider's signature scheme requires it.
-2. Verify signature using the provider-documented algorithm, active key rotation rules, constant-time comparison and a bounded timestamp where available.
-3. Persist a durable event receipt before acknowledging if durable processing is required. Duplicate delivery must resolve to the existing receipt and never duplicate a transition.
-4. Treat a valid signature as evidence of origin/integrity only; independently verify payment status and exact amount, currency, provider account, reference and intended order.
-5. Process through a transaction with deterministic row locking. Store failed validation/conflict outcomes for monitoring without making them fulfillment evidence.
-6. Return provider-required acknowledgements quickly after durable intake; run slow verification/reconciliation outside the request path where needed.
+Refund state is separate: `NOT_REQUESTED`, `PENDING`, `PROCESSING`, `REFUNDED`, `FAILED`, `NEEDS_RECONCILIATION` (or equivalent). Only provider-confirmed refund status establishes `REFUNDED`; request acceptance/queueing is not completion.
 
-Paystack documents timestamped signatures and retries, while its webhook events currently emphasize successful payment notification. Daraja's status query is documented as an asynchronous secondary reconciliation route for missing callbacks. Exact Daraja callback authentication/retry behavior must be confirmed for the selected API and merchant account.
+### State transition authority
 
-## Idempotency and ordering
+- **Synchronous initialization response:** accepted/action required -> `PENDING`; definitive rejection -> `FAILED`; timeout/network ambiguity -> `INITIATION_UNKNOWN`, never assumed failure.
+- **Client redirect/request:** may provide a reference to look up; cannot set payment status.
+- **Webhook:** authenticated origin/integrity may create a durable receipt and enqueue verification. It does not directly mark success/failure. An invalid signature is rejected; a valid but unmatched payload is quarantined.
+- **Server-side transaction verification:** may set success only when provider account/environment, transaction reference, expected order association, exact integer amount, and KES currency match. A confirmed terminal provider failure may set `FAILED`; pending/ongoing statuses remain pending.
+- **Scheduled/manual reconciliation:** queries unresolved/missing-callback attempts, applies the same verification checks, records findings and is safe to repeat. It does not blindly overwrite terminal states.
+- **Refund confirmation:** only provider refund verification/notification followed by independent status confirmation can set refund `REFUNDED`.
 
-- Give local attempts and refund attempts stable idempotency references.
-- Use provider event IDs when the provider guarantees a stable identifier; otherwise use a carefully scoped dedupe key (provider account, environment, transaction reference, event type and payload digest) and still query provider state. Do not assume webhook resend is idempotent.
-- Treat repeated same-state verification as a no-op. Reject or quarantine conflicting terminal results; reconcile from provider-authoritative state and audit the resolution.
-- Apply each fulfillment exactly once under database uniqueness/state checks and one transaction. A second successful payment for an already fulfilled order is a separate duplicate-payment exception and refund decision.
-- Do not regress a verified terminal state based on stale/out-of-order callbacks.
+Paystack's current Verify Payments documentation says webhook notifications currently cover successful transactions; query verification is needed for pending/failure and missing callback resolution. Its webhook guidance requires signature verification on the raw body, timestamp freshness where signed timestamp is supplied, constant-time HMAC comparison and acknowledges retries. Webhook resend is not treated as idempotent; local inbox deduplication remains mandatory.
 
-## Reconciliation operations
+## Initialization, idempotency and event ordering
 
-Reconcile unresolved attempts by provider reference and local date window; identify attempts missing callbacks, webhook delivery failures, provider-success/local-pending mismatches, local-success/provider-disagreement, duplicate provider transactions, settlement variances and refund status differences. Use bounded queries, durable run IDs, rate limits, audit logs and retryable idempotent operations. Alert on age/amount/value thresholds. Restrict reconciliation and refund actions to authenticated, audited operators.
+Persist the payment attempt and immutable amount/currency snapshot before provider I/O. Generate a unique local reference and bind the provider transaction reference under provider account plus environment uniqueness. One order may have several historical attempts, but do not start a second unresolved charge while the first is ambiguous. Provider-specific idempotency availability/semantics must be confirmed in the adapter contract; local uniqueness and verify-before-retry are still required.
 
-## Late success after expiry or cancellation
+Persist webhook receipt and deduplication key before acknowledging durable intake. Prefer stable provider event ID; otherwise use a carefully scoped account/environment/reference/event/digest key. Reverify against provider state even after a duplicate or reordered webhook. Stale events cannot regress a verified terminal state. Contradictory terminal evidence triggers reconciliation and an audit finding, not last-write-wins.
 
-The current service expires/cancels reservations and releases inventory. It cannot safely re-open scarce inventory after a provider later reports success. Proposed safe default: persist payment success as a financial fact, mark fulfillment conflict for review, do not issue tickets or reacquire inventory implicitly, and make any refund an explicit authorized/reconciled operation. Whether to automatically refund, hold for manual review or permit fulfillment after inventory revalidation is a project-owner decision. Provider cancellation/refund may be irreversible or asynchronous.
+For an ambiguous initialization, refund or query request, do not blindly retry the side effect. First query by stable reference; retry only where provider semantics and local idempotency make it safe. Store each reconciliation run/outcome and make replay a no-op for already-applied effects.
 
-## Refund lifecycle
+## Fulfillment and late success
 
-Keep refund request and refund settlement separate. Persist a local refund ID/reference and amount/currency; send at most once under that reference; treat provider timeout as unknown until fetched; consume refund status notifications and query/reconcile; do not tell a customer a refund completed until provider evidence confirms completion. Keep original payment as successful and attach a separate refund/reversal state rather than erasing payment history.
+For every verified success, lock the attempt, order/reservation and relevant inventory in one database transaction. Check exact attempt/order/reference and immutable amount/currency, then verify reservation remains eligible and inventory is still held. Commit payment fact and eligible ticket/order/inventory transitions atomically and once. On mismatch, duplicate successful charge or ineligible order, persist the verified financial fact and route to an exception path; never issue a ticket merely because a provider succeeded.
 
-## Required scenario tests before release
+For late success after reservation expiry/cancellation or when inventory is unavailable:
 
-- Valid/invalid signatures, key rotation, body alteration and stale timestamps.
-- Duplicate, delayed, reordered, resent, missing and malformed event deliveries.
-- Provider verify status/amount/currency/reference/account mismatch.
-- Timeout before request accepted, timeout after accepted, repeated verify and provider downtime.
-- Same-order concurrent attempts, duplicate successful attempts and transaction-reference collisions.
-- Payment success after expiry/cancellation and during concurrent cancellation/expiry.
-- Refund retry after timeout, refund failure/needs-attention and duplicate refund request.
-- Transaction rollback proves payment, order, ticket and inventory remain consistent.
-- Reconciliation can be rerun safely and identifies manually injected ledger/provider discrepancies.
+1. Independently query Paystack and validate merchant/account, environment, reference, amount and KES currency.
+2. Persist immutable verified transaction evidence.
+3. Check reservation status and inventory eligibility under transaction/locking.
+4. If expired/ineligible/no inventory, issue no ticket and do not reopen or reacquire inventory implicitly.
+5. Create one authorized, idempotent refund attempt referencing the original transaction; persist local and provider references/status.
+6. Query/consume authenticated refund updates until provider confirms completion; escalate failure, timeout, `needs-attention` or prolonged pending to an audited manual queue.
 
-Use provider sandbox plus a disposable PostgreSQL environment for integration tests. A mock or SQLite-only test is insufficient for transaction and uniqueness claims.
+Duplicate refund actions reuse the same local refund identity/reference. A timeout is an unknown outcome and must be queried before retry. Multiple partial/full refunds must respect provider-confirmed cumulative refunded amount and the internal authorization record. A failed refund does not erase payment success or prove money returned. Customer notification must reflect verified refund status only.
+
+## Platform collection and organizer settlement
+
+Provider transaction records establish customer payment facts, not organizer balances. Record gross captured amount, provider fees when evidenced, refunds, platform revenue and organizer liability as separate per-currency accounting movements. Keep a balanced traceable journal with unique source references. Do not call a provider-success amount cleared funds until settlement evidence supports it. Organizer payout has its own record/reference/state; initiated is not paid, and liability changes only on provider-confirmed/reconciled payout. Commercial rules for commission, taxes, reserves, deductions and timing remain undefined and must not be inferred.
+
+## Reconciliation and operations
+
+Reconcile attempts missing callbacks, provider success/local pending, local success/provider disagreement, unmatched references, multiple successes, amount/currency mismatches, provider settlement variance, refunds and organizer payouts. Use bounded time windows, rate limits, durable run IDs, idempotent updates, audit actor/source and retryable exception states. Keep unmatched/conflicting events for investigation without fulfilling. Reconciliation must support replay and manual escalation without editing historical records silently.
+
+## Required tests before release
+
+- State transition table tests for each allowed and rejected transition/source.
+- Forged, malformed, changed-body, stale/future and rotated-key webhook signatures.
+- Duplicate, reordered, delayed, resent and missing webhook deliveries.
+- Verified amount/currency/account/environment/reference mismatch.
+- Initialization/verification/refund timeouts before and after provider acceptance.
+- Repeated reconciliation and duplicate payment/refund processing.
+- Concurrent payment attempts; expiry/cancellation against success; inventory unavailable after late success.
+- Duplicate refund, partial refund cap, failure/attention and delayed confirmation.
+- Atomic rollback and PostgreSQL concurrency/uniqueness tests.
+- Ledger balancing, unique source application, settlement mismatch and payout confirmation invariants.
+
+Mocks support unit tests; only an isolated PostgreSQL environment can verify database transaction/locking guarantees. Provider sandbox tests do not establish live account eligibility or merchant terms.
+
+## Official sources (reviewed 2026-11-19)
+
+- Paystack [Verify Payments](https://paystack.com/docs/payments/verify-payments/)
+- Paystack [Webhooks](https://paystack.com/docs/payments/webhooks/)
+- Paystack [Refunds](https://paystack.com/docs/payments/refunds/)
+- Paystack [Payment Channels](https://paystack.com/docs/payments/payment-channels/)
