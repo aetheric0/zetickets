@@ -2,7 +2,7 @@
 
 Zetickets is an early-stage ticketing backend for managing event inventory and time-limited ticket reservations. Its engineering work focuses on transactional inventory correctness, auditable payment foundations and safe evolution of historical data.
 
-> **Status:** Phases 1 and 2 have repository-level and isolated PostgreSQL verification. Phase 3 Package 1 security foundation and Package 2 payment persistence are implemented and verified on a fresh disposable PostgreSQL 18.6 cluster. Provider integration and payment behavior have not started. The runtime currently exposes only `GET /health`. This project is not production-ready.
+> **Status:** Phases 1 and 2 have repository-level and isolated PostgreSQL verification. Phase 3 Package 1 security foundation is implemented and covered by database-independent tests. Package 2 payment persistence and its migration were verified on a fresh disposable PostgreSQL 18.6 cluster. Provider integration, verified transaction processing and payment-driven ticket fulfillment remain unimplemented. The runtime currently exposes only `GET /health`. This project is not production-ready.
 
 ## Feature status
 
