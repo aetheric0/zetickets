@@ -4,6 +4,15 @@
 
 The roadmap establishes the engineering foundations before product expansion. It is both an implementation plan and a structured learning curriculum for professional backend engineering.
 
+## Current repository status (reviewed 2026-11-19)
+
+- **Phase 1 — Complete at repository level.** Model/schema tests pass. The complete migration chain was also exercised on a fresh disposable PostgreSQL 18.6 database during Phase 2 verification; compatibility with any pre-existing application database remains unverified.
+- **Phase 2 — Complete at repository/test-environment level.** Transactional reservation behavior and PostgreSQL integration checks passed on the fresh disposable PostgreSQL 18.6 environment. Existing database migration compatibility and production runtime operations are not established.
+- **Phase 3 — Architecture/security planning documented; implementation not started.** Provider choice, currency/settlement, refund authority and late-payment policy require owner approval. This review does not authorize provider or application code.
+- **Phases 4 and 5 — Not started.**
+
+For Phase 3 proposals, provider evidence and approval gates, see the [payment architecture](architecture/payment-architecture.md), [provider comparison](payments/provider-comparison.md), [threat model](security/threat-model.md), and [proposed ADRs](decisions/README.md).
+
 ## Phase 1 — Canonical data model and schemas
 
 **Scope**
